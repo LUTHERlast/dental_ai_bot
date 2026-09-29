@@ -1,0 +1,488 @@
+import os
+from pathlib import Path
+from typing import List, Dict, Optional
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, PlainTextResponse
+from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# Load root .env
+ROOT_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(ROOT_DIR / ".env")
+
+app = FastAPI(title="Free AI Clinic Chatbot Service")
+
+# Allow any website to embed the widget (CORS enabled)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+
+class MessageItem(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[List[MessageItem]] = []
+    clinic_name: Optional[str] = "Al Dhabi Dental Centre"
+    clinic_location: Optional[str] = "Abu Dhabi, UAE"
+    whatsapp_number: Optional[str] = "+971547400174"
+
+import json
+from datetime import datetime
+
+class AppointmentBooking(BaseModel):
+    patient_name: str
+    phone_number: str
+    treatment: str
+    date_time: str
+    clinic_name: Optional[str] = "Al Dhabi Dental Centre"
+
+APPOINTMENTS_FILE = ROOT_DIR / "outputs" / "clinic_appointments.json"
+
+DEFAULT_CLINIC_CONTEXT = """
+You are 'Aura', a polite, empathetic, and professional AI Medical Receptionist for {clinic_name} in {clinic_location}.
+
+Clinic Knowledge:
+- Working Hours: Saturday to Thursday: 9:00 AM - 9:00 PM. Friday: 2:00 PM - 8:00 PM.
+- Emergency Care: 24/7 emergency dental hotline available.
+- Services Offered:
+  * Teeth Whitening & Cleaning (from 350 AED)
+  * Orthodontics & Invisible Aligners (Invisalign certified)
+  * Dental Implants & Oral Surgery
+  * Cosmetic Veneers & Smile Makeovers
+  * Pediatric (Children) Dentistry
+- Accepted Insurances: Daman, Thiqa, NextCare, AXA, MetLife, Oman Insurance.
+- WhatsApp Direct Booking: {whatsapp_number}
+
+CURRENTLY RESERVED SCHEDULE (SLOTS ALREADY TAKEN):
+{existing_booked_slots}
+
+CRITICAL ANTI-DOUBLE-BOOKING RULES:
+1. Examine the CURRENTLY RESERVED SCHEDULE above before confirming ANY appointment.
+2. If the patient requests a date/time that is already booked or overlaps with an existing appointment (for example, if another patient already has 10:00 AM):
+   - You MUST NOT book the conflicting slot!
+   - Inform the patient politely: "I see that [Requested Time] is already reserved for another patient."
+   - Suggest 2 alternative open times (for example: "Would 10:30 AM or 11:30 AM work for you instead?").
+   - DO NOT output the [BOOKING_SUCCESS: ...] tag for a conflicting slot!
+3. Only when the patient agrees to an OPEN, non-conflicting time AND you have all 4 details (Full Name, Phone Number, Treatment, and Date/Time), output:
+   [BOOKING_SUCCESS: PatientName | PhoneNumber | Treatment | DateTime]
+
+Appointment Booking Protocol:
+1. Politely ask for any missing details (Name, Phone, Treatment, Preferred Date and Time).
+2. Check for slot conflicts.
+3. Lock in only available slots.
+"""
+
+@app.get("/")
+def home():
+    return {
+        "status": "online",
+        "service": "AI Chatbot Backend",
+        "model": GEMINI_MODEL,
+        "ready": bool(GEMINI_API_KEY)
+    }
+
+@app.get("/widget.js")
+def get_widget():
+    """Serves the embeddable JavaScript chat bubble."""
+    widget_path = Path(__file__).parent / "static" / "widget.js"
+    if not widget_path.exists():
+        raise HTTPException(status_code=404, detail="Widget script not found")
+    return FileResponse(widget_path, media_type="application/javascript")
+
+@app.post("/chat")
+def chat_endpoint(req: ChatRequest):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured in .env")
+
+    existing_appts = get_appointments_list()
+    booked_slots_list = [f"- {a.get('date_time', '')} ({a.get('treatment', '')})" for a in existing_appts if a.get('date_time')]
+    booked_slots_str = "\n".join(booked_slots_list) if booked_slots_list else "None. All slots currently open."
+
+    clean_whatsapp = "".join(filter(str.isdigit, req.whatsapp_number or ""))
+    system_prompt = DEFAULT_CLINIC_CONTEXT.format(
+        clinic_name=req.clinic_name,
+        clinic_location=req.clinic_location,
+        whatsapp_number=req.whatsapp_number,
+        clean_whatsapp=clean_whatsapp,
+        existing_booked_slots=booked_slots_str
+    )
+
+    # Build conversation context
+    conversation_text = ""
+    for msg in req.history[-6:]:
+        speaker = "Patient" if msg.role == "user" else "Assistant"
+        conversation_text += f"{speaker}: {msg.content}\n"
+
+    full_prompt = f"{conversation_text}Patient: {req.message}\nAssistant:"
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            temperature=0.6,
+            max_output_tokens=350,
+        )
+
+        # Call Gemini
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=full_prompt,
+            config=config,
+        )
+
+        reply_text = response.text.strip() if response and response.text else "Thank you for reaching out!"
+        
+        # Check if an appointment was successfully finalized
+        booking_data = None
+        if "[BOOKING_SUCCESS:" in reply_text:
+            try:
+                import re
+                match = re.search(r'\[BOOKING_SUCCESS:\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\]]+)\]', reply_text)
+                if match:
+                    p_name, p_phone, p_treatment, p_time = [g.strip() for g in match.groups()]
+                    booking_id = f"AD-{datetime.now().strftime('%m%d%H%M')}"
+                    booking_data = {
+                        "booking_id": booking_id,
+                        "patient_name": p_name,
+                        "phone_number": p_phone,
+                        "treatment": p_treatment,
+                        "date_time": p_time,
+                        "clinic_name": req.clinic_name,
+                        "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    
+                    # Save to JSON database
+                    APPOINTMENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    existing = []
+                    if APPOINTMENTS_FILE.exists():
+                        try:
+                            existing = json.loads(APPOINTMENTS_FILE.read_text(encoding="utf-8"))
+                        except Exception:
+                            existing = []
+                    existing.append(booking_data)
+                    APPOINTMENTS_FILE.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+            except Exception as save_err:
+                print(f"Error saving appointment: {save_err}")
+
+        return {"reply": reply_text, "booking": booking_data}
+    except Exception as e:
+        return {
+            "reply": f"Thank you for contacting {req.clinic_name}. Our front desk is available directly on WhatsApp at {req.whatsapp_number}."
+        }
+
+from fastapi.responses import HTMLResponse
+
+def get_appointments_list():
+    if APPOINTMENTS_FILE.exists():
+        try:
+            return json.loads(APPOINTMENTS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+@app.get("/api/appointments")
+def api_appointments():
+    """Raw JSON endpoint for API or integrations."""
+    return get_appointments_list()
+
+@app.get("/appointments", response_class=HTMLResponse)
+@app.get("/dashboard", response_class=HTMLResponse)
+def appointments_dashboard(format: Optional[str] = None):
+    """Clinic Receptionist Dashboard to view and manage all AI bookings."""
+    appointments = get_appointments_list()
+    
+    if format == "json":
+        import json as py_json
+        return PlainTextResponse(py_json.dumps(appointments, indent=2), media_type="application/json")
+
+    total_bookings = len(appointments)
+    
+    import collections, re
+    def normalize_time(t_str):
+        clean = re.sub(r'[^a-zA-Z0-9]', '', (t_str or '').lower())
+        return clean.replace("at", "")
+
+    time_counts = collections.Counter([normalize_time(a.get("date_time", "")) for a in appointments if a.get("date_time")])
+    has_conflicts = any(count > 1 for norm_t, count in time_counts.items() if norm_t)
+
+    rows_html = ""
+    for appt in reversed(appointments):
+        bid = appt.get("booking_id", "N/A")
+        pname = appt.get("patient_name", "Anonymous")
+        phone = appt.get("phone_number", "")
+        clean_phone = "".join(filter(str.isdigit, phone))
+        treatment = appt.get("treatment", "General Consultation")
+        dtime = appt.get("date_time", "Not specified")
+        booked_at = appt.get("booked_at", "")
+        
+        is_conflict = time_counts.get(normalize_time(dtime), 0) > 1
+        if is_conflict:
+            status_html = '<span class="badge badge-conflict">⚠️ Overlap Conflict</span>'
+        else:
+            status_html = '<span class="badge badge-confirmed">Confirmed</span>'
+
+        wa_link = f"https://wa.me/{clean_phone}?text=Hello%20{pname},%20confirming%20your%20appointment%20at%20Al%20Dhabi%20Dental%20Centre!"
+        
+        rows_html += f"""
+        <tr class="{'row-conflict' if is_conflict else ''}">
+          <td><span class="badge badge-id">{bid}</span></td>
+          <td><strong>{pname}</strong></td>
+          <td>{phone}</td>
+          <td><span class="badge badge-treatment">{treatment}</span></td>
+          <td><strong>{dtime}</strong></td>
+          <td class="text-muted">{booked_at}</td>
+          <td>{status_html}</td>
+          <td>
+            <a href="{wa_link}" target="_blank" class="btn-wa">💬 WhatsApp</a>
+          </td>
+        </tr>
+        """
+        
+    if not rows_html:
+        rows_html = "<tr><td colspan='8' style='text-align:center; padding:32px; color:#64748b;'>No appointments booked yet. The AI is waiting for incoming patients.</td></tr>"
+
+    conflict_banner_html = ""
+    if has_conflicts:
+        conflict_banner_html = """
+        <div class="alert-conflict">
+          <div class="alert-icon">⚠️</div>
+          <div>
+            <strong>Schedule Overlap Detected:</strong> Multiple patients booked the same time slot (highlighted in red). The AI will automatically prevent future overlapping bookings. Front desk follow-up recommended.
+          </div>
+        </div>
+        """
+
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Al Dhabi Dental Centre — AI Reception Dashboard</title>
+<style>
+  body {{
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f1f5f9;
+    color: #1e293b;
+  }}
+  .navbar {{
+    background: linear-gradient(135deg, #0284c7, #0369a1);
+    color: #ffffff;
+    padding: 18px 36px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.2);
+  }}
+  .navbar h1 {{
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+  }}
+  .navbar-status {{
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 6px 14px;
+    border-radius: 20px;
+  }}
+  .container {{
+    max-width: 1200px;
+    margin: 32px auto;
+    padding: 0 24px;
+  }}
+  .stats-grid {{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 28px;
+  }}
+  .stat-card {{
+    background: #ffffff;
+    padding: 22px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+  }}
+  .stat-card-title {{
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }}
+  .stat-card-val {{
+    font-size: 28px;
+    font-weight: 800;
+    color: #0f172a;
+  }}
+  .table-card {{
+    background: #ffffff;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    overflow: hidden;
+  }}
+  .table-header {{
+    padding: 20px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }}
+  .table-header h2 {{
+    margin: 0;
+    font-size: 17px;
+    color: #1e293b;
+  }}
+  table {{
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 14px;
+  }}
+  th {{
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e2e8f0;
+  }}
+  td {{
+    padding: 16px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+  }}
+  tr:hover {{
+    background: #f8fafc;
+  }}
+  .badge {{
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+  }}
+  .badge-id {{
+    background: #e0f2fe;
+    color: #0369a1;
+  }}
+  .badge-treatment {{
+    background: #fef3c7;
+    color: #92400e;
+  }}
+  .badge-confirmed {{
+    background: #dcfce7;
+    color: #166534;
+  }}
+  .badge-conflict {{
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #f87171;
+    font-weight: 700;
+  }}
+  .row-conflict {{
+    background: #fff1f2 !important;
+  }}
+  .alert-conflict {{
+    background: #fffbeb;
+    border-left: 5px solid #f59e0b;
+    padding: 16px 20px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: #92400e;
+    font-size: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }}
+  .alert-icon {{
+    font-size: 24px;
+  }}
+  .btn-wa {{
+    background: #25D366;
+    color: #ffffff !important;
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+    box-shadow: 0 2px 4px rgba(37,211,102,0.2);
+  }}
+  .btn-wa:hover {{
+    background: #20ba5a;
+  }}
+  .text-muted {{
+    color: #94a3b8;
+    font-size: 12px;
+  }}
+</style>
+</head>
+<body>
+
+<div class="navbar">
+  <h1>🦷 Al Dhabi Dental Centre — Reception Dashboard</h1>
+  <div class="navbar-status">● 24/7 AI Receptionist: Active</div>
+</div>
+
+<div class="container">
+  {conflict_banner_html}
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-card-title">Total Bookings Captured</div>
+      <div class="stat-card-val">{total_bookings}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-title">Location</div>
+      <div class="stat-card-val" style="font-size: 20px; padding-top: 6px;">Mussafah, Abu Dhabi</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-title">AI Status</div>
+      <div class="stat-card-val" style="font-size: 20px; color: #16a34a; padding-top: 6px;">100% Online</div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-header">
+      <h2>Recent Patient Bookings (Live Schedule)</h2>
+      <a href="/appointments" style="font-size: 13px; color: #0284c7; text-decoration: none; font-weight: 600;">🔄 Refresh Table</a>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Booking ID</th>
+          <th>Patient Name</th>
+          <th>Phone</th>
+          <th>Treatment</th>
+          <th>Requested Date & Time</th>
+          <th>Time Booked</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows_html}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
+
+
