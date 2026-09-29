@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -211,31 +211,31 @@ def get_demo_page():
 
 <header>
   <div class="logo">
-    ðŸ¦· Al Dhabi Dental Centre
+    &#129463; Al Dhabi Dental Centre
     <span class="badge-demo">24/7 AI Reception Preview</span>
   </div>
-  <a href="/appointments" class="nav-btn" target="_blank">ðŸ“‹ View Reception Dashboard</a>
+  <a href="/appointments" class="nav-btn" target="_blank">&#128203; View Reception Dashboard</a>
 </header>
 
 <div class="hero">
   <h1>World-Class Dental Care in Mussafah, Abu Dhabi</h1>
   <p>Providing advanced cosmetic dentistry, orthodontic care, and emergency dental solutions with over 35 years of clinical excellence.</p>
   <div class="cta-bubble-hint">
-    ðŸ‘‡ Tap the blue chat bubble at the bottom-right to test your 24/7 AI Receptionist!
+    &#128071; Tap the blue chat bubble at the bottom-right to test your 24/7 AI Receptionist!
   </div>
 </div>
 
 <div class="services">
   <div class="service-card">
-    <h3>ðŸ¦· Orthodontics & Invisalign</h3>
+    <h3>&#129463; Orthodontics & Invisalign</h3>
     <p>Straighten your smile discreetly with certified clear aligners and gentle specialist treatments.</p>
   </div>
   <div class="service-card">
-    <h3>âœ¨ Laser Teeth Whitening</h3>
+    <h3>&#10024; Laser Teeth Whitening</h3>
     <p>In-clinic laser whitening sessions that brighten your smile up to 8 shades in just 45 minutes.</p>
   </div>
   <div class="service-card">
-    <h3>ðŸ”© Dental Implants & Surgery</h3>
+    <h3>&#128297; Dental Implants & Surgery</h3>
     <p>Permanent, natural-looking tooth replacements utilizing 3D digital imaging guidance.</p>
   </div>
 </div>
@@ -249,7 +249,7 @@ def get_demo_page():
 
 </body>
 </html>"""
-    return HTMLResponse(content=demo_html_content)
+    return HTMLResponse(content=demo_html_content, media_type="text/html; charset=utf-8")
 
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
@@ -383,7 +383,7 @@ def appointments_dashboard(format: Optional[str] = None):
         
         is_conflict = time_counts.get(normalize_time(dtime), 0) > 1
         if is_conflict:
-            status_html = '<span class="badge badge-conflict">âš ï¸ Overlap Conflict</span>'
+            status_html = '<span class="badge badge-conflict">&#9888; Overlap Conflict</span>'
         else:
             status_html = '<span class="badge badge-confirmed">Confirmed</span>'
 
@@ -400,7 +400,7 @@ def appointments_dashboard(format: Optional[str] = None):
           <td class="text-muted">{booked_at}</td>
           <td>{status_html}</td>
           <td>
-            <a href="{wa_link}" target="_blank" class="btn-wa">ðŸ’¬ WhatsApp</a>
+            <a href="{wa_link}" target="_blank" class="btn-wa">&#128172; WhatsApp</a>
           </td>
         </tr>
         """
@@ -415,24 +415,24 @@ def appointments_dashboard(format: Optional[str] = None):
           <div class="card-patient-name">{pname}</div>
           <div class="card-meta">
             <div class="meta-row">
-              <span class="meta-label">ðŸ“… Date & Time</span>
+              <span class="meta-label">&#128197; Date & Time</span>
               <span class="meta-val meta-time">{dtime}</span>
             </div>
             <div class="meta-row">
-              <span class="meta-label">ðŸ¦· Service</span>
+              <span class="meta-label">&#129463; Service</span>
               <span class="meta-val">{treatment}</span>
             </div>
             <div class="meta-row">
-              <span class="meta-label">ðŸ“ž Phone</span>
+              <span class="meta-label">&#128222; Phone</span>
               <span class="meta-val"><a href="tel:{clean_phone}" style="color:#0284c7; font-weight:700; text-decoration:none;">{phone}</a></span>
             </div>
             <div class="meta-row">
-              <span class="meta-label">â±ï¸ Booked</span>
+              <span class="meta-label">&#9201; Booked</span>
               <span class="meta-val text-muted">{booked_at}</span>
             </div>
           </div>
           <a href="{wa_link}" target="_blank" class="btn-wa-card">
-            ðŸ’¬ Open WhatsApp Confirmation
+            &#128172; Open WhatsApp Confirmation
           </a>
         </div>
         """
@@ -445,7 +445,7 @@ def appointments_dashboard(format: Optional[str] = None):
     if has_conflicts:
         conflict_banner_html = """
         <div class="alert-conflict">
-          <div class="alert-icon">âš ï¸</div>
+          <div class="alert-icon">&#9888;</div>
           <div>
             <strong>Schedule Overlap Detected:</strong> Multiple patients booked the same time slot (highlighted in red). The AI will automatically prevent future overlapping bookings. Front desk follow-up recommended.
           </div>
@@ -457,7 +457,7 @@ def appointments_dashboard(format: Optional[str] = None):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Al Dhabi Dental Centre â€” AI Reception Dashboard</title>
+<title>Al Dhabi Dental Centre &mdash; AI Reception Dashboard</title>
 <style>
   * {{
     box-sizing: border-box;
@@ -758,8 +758,8 @@ def appointments_dashboard(format: Optional[str] = None):
 <body>
 
 <div class="navbar">
-  <h1>ðŸ¦· Al Dhabi Dental Centre â€” Reception Dashboard</h1>
-  <div class="navbar-status">â— 24/7 AI Receptionist: Active</div>
+  <h1>&#129463; Al Dhabi Dental Centre &mdash; Reception Dashboard</h1>
+  <div class="navbar-status">&#9679; 24/7 AI Receptionist: Active</div>
 </div>
 
 <div class="container">
@@ -782,7 +782,7 @@ def appointments_dashboard(format: Optional[str] = None):
   <div class="table-card">
     <div class="table-header">
       <h2>Recent Patient Bookings (Live Schedule)</h2>
-      <a href="/appointments" style="font-size: 13px; color: #0284c7; text-decoration: none; font-weight: 600;">ðŸ”„ Refresh Table</a>
+      <a href="/appointments" style="font-size: 13px; color: #0284c7; text-decoration: none; font-weight: 600;">&#128260; Refresh Table</a>
     </div>
 
     <!-- Desktop Table View -->
@@ -815,6 +815,6 @@ def appointments_dashboard(format: Optional[str] = None):
 
 </body>
 </html>"""
-    return HTMLResponse(content=html_content)
+    return HTMLResponse(content=html_content, media_type="text/html; charset=utf-8")
 
 
