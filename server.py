@@ -100,23 +100,29 @@ def get_widget():
     return FileResponse(widget_path, media_type="application/javascript")
 
 @app.get("/demo", response_class=HTMLResponse)
-def get_demo_page():
-    """Serves the live interactive clinic demo website for client preview."""
-    demo_html_content = """<!DOCTYPE html>
+def get_demo_page(clinic: Optional[str] = "Al Dhabi Dental Centre", whatsapp: Optional[str] = "+971588360378", location: Optional[str] = "Abu Dhabi, UAE"):
+    """Serves the live interactive clinic demo website for client preview with dynamic clinic parameters."""
+    import urllib.parse
+    enc_clinic = urllib.parse.quote(clinic)
+    enc_whatsapp = urllib.parse.quote(whatsapp)
+    enc_loc = urllib.parse.quote(location)
+    dashboard_url = f"/appointments?clinic={enc_clinic}&location={enc_loc}"
+    
+    demo_html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Al Dhabi Dental & Orthodontic Centre | Live AI Preview</title>
+<title>{clinic} | Live AI Preview</title>
 <style>
-  * { box-sizing: border-box; }
-  body {
+  * {{ box-sizing: border-box; }}
+  body {{
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     color: #1e293b;
     background: #f8fafc;
-  }
-  header {
+  }}
+  header {{
     background: #ffffff;
     padding: 16px 24px;
     display: flex;
@@ -125,24 +131,24 @@ def get_demo_page():
     border-bottom: 1px solid #e2e8f0;
     flex-wrap: wrap;
     gap: 12px;
-  }
-  .logo {
+  }}
+  .logo {{
     font-size: 20px;
     font-weight: 800;
     color: #0284c7;
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-  .badge-demo {
+  }}
+  .badge-demo {{
     background: #e0f2fe;
     color: #0369a1;
     font-size: 11px;
     font-weight: 700;
     padding: 4px 8px;
     border-radius: 12px;
-  }
-  .nav-btn {
+  }}
+  .nav-btn {{
     background: #0284c7;
     color: #ffffff;
     padding: 8px 16px;
@@ -150,26 +156,26 @@ def get_demo_page():
     text-decoration: none;
     font-size: 13px;
     font-weight: 600;
-  }
-  .hero {
+  }}
+  .hero {{
     padding: 48px 20px;
     max-width: 900px;
     margin: 0 auto;
     text-align: center;
-  }
-  .hero h1 {
+  }}
+  .hero h1 {{
     font-size: 32px;
     color: #0f172a;
     margin-bottom: 14px;
-  }
-  .hero p {
+  }}
+  .hero p {{
     font-size: 16px;
     color: #64748b;
     max-width: 650px;
     margin: 0 auto 24px;
     line-height: 1.6;
-  }
-  .cta-bubble-hint {
+  }}
+  .cta-bubble-hint {{
     display: inline-block;
     background: #f0fdf4;
     border: 1px solid #bbf7d0;
@@ -179,47 +185,47 @@ def get_demo_page():
     font-size: 14px;
     font-weight: 600;
     box-shadow: 0 2px 6px rgba(22, 101, 52, 0.1);
-  }
-  .services {
+  }}
+  .services {{
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 20px;
     max-width: 1000px;
     margin: 20px auto 60px;
     padding: 0 20px;
-  }
-  .service-card {
+  }}
+  .service-card {{
     background: #ffffff;
     padding: 24px;
     border-radius: 12px;
     border: 1px solid #e2e8f0;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-  }
-  .service-card h3 {
+  }}
+  .service-card h3 {{
     margin-top: 0;
     color: #0369a1;
     font-size: 18px;
-  }
-  .service-card p {
+  }}
+  .service-card p {{
     color: #64748b;
     font-size: 14px;
     line-height: 1.5;
-  }
+  }}
 </style>
 </head>
 <body>
 
 <header>
   <div class="logo">
-    &#129463; Al Dhabi Dental Centre
+    &#129463; {clinic}
     <span class="badge-demo">24/7 AI Reception Preview</span>
   </div>
-  <a href="/appointments" class="nav-btn" target="_blank">&#128203; View Reception Dashboard</a>
+  <a href="{dashboard_url}" class="nav-btn" target="_blank">&#128203; View Reception Dashboard</a>
 </header>
 
 <div class="hero">
-  <h1>World-Class Dental Care in Mussafah, Abu Dhabi</h1>
-  <p>Providing advanced cosmetic dentistry, orthodontic care, and emergency dental solutions with over 35 years of clinical excellence.</p>
+  <h1>World-Class Dental Care &bull; {clinic}</h1>
+  <p>Providing advanced cosmetic dentistry, orthodontic care, and emergency solutions in {location}.</p>
   <div class="cta-bubble-hint">
     &#128071; Tap the blue chat bubble at the bottom-right to test your 24/7 AI Receptionist!
   </div>
@@ -240,11 +246,11 @@ def get_demo_page():
   </div>
 </div>
 
-<!-- LIVE EMBEDDABLE SCRIPT -->
+<!-- LIVE EMBEDDABLE SCRIPT WITH DYNAMIC ATTRIBUTES -->
 <script 
   src="/widget.js" 
-  data-clinic="Al Dhabi Dental Centre" 
-  data-whatsapp="+971588360378">
+  data-clinic="{clinic}" 
+  data-whatsapp="{whatsapp}">
 </script>
 
 </body>
@@ -352,9 +358,17 @@ def api_appointments():
 
 @app.get("/appointments", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
-def appointments_dashboard(format: Optional[str] = None):
-    """Clinic Receptionist Dashboard to view and manage all AI bookings."""
-    appointments = get_appointments_list()
+def appointments_dashboard(clinic: Optional[str] = None, location: Optional[str] = None, format: Optional[str] = None):
+    """Clinic Receptionist Dashboard to view and manage all AI bookings dynamically by clinic."""
+    all_appointments = get_appointments_list()
+    if clinic:
+        appointments = [a for a in all_appointments if (a.get("clinic_name") or "").strip().lower() == clinic.strip().lower()]
+        display_clinic_name = clinic
+    else:
+        appointments = all_appointments
+        display_clinic_name = "Al Dhabi Dental Centre"
+
+    display_location = location or ("Mussafah, Abu Dhabi" if "Al Dhabi" in display_clinic_name else "Abu Dhabi, UAE")
     
     if format == "json":
         import json as py_json
@@ -387,7 +401,7 @@ def appointments_dashboard(format: Optional[str] = None):
         else:
             status_html = '<span class="badge badge-confirmed">Confirmed</span>'
 
-        wa_link = f"https://wa.me/{clean_phone}?text=Hello%20{pname},%20confirming%20your%20appointment%20at%20Al%20Dhabi%20Dental%20Centre!"
+        wa_link = f"https://wa.me/{clean_phone}?text=Hello%20{pname},%20confirming%20your%20appointment%20at%20{display_clinic_name}!"
         
         # Desktop table row
         rows_html += f"""
@@ -457,7 +471,7 @@ def appointments_dashboard(format: Optional[str] = None):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Al Dhabi Dental Centre &mdash; AI Reception Dashboard</title>
+<title>{display_clinic_name} &mdash; AI Reception Dashboard</title>
 <style>
   * {{
     box-sizing: border-box;
@@ -758,7 +772,7 @@ def appointments_dashboard(format: Optional[str] = None):
 <body>
 
 <div class="navbar">
-  <h1>&#129463; Al Dhabi Dental Centre &mdash; Reception Dashboard</h1>
+  <h1>&#129463; {display_clinic_name} &mdash; Reception Dashboard</h1>
   <div class="navbar-status">&#9679; 24/7 AI Receptionist: Active</div>
 </div>
 
@@ -771,7 +785,7 @@ def appointments_dashboard(format: Optional[str] = None):
     </div>
     <div class="stat-card">
       <div class="stat-card-title">Location</div>
-      <div class="stat-card-val" style="font-size: 16px; font-weight: 700;">Mussafah, Abu Dhabi</div>
+      <div class="stat-card-val" style="font-size: 16px; font-weight: 700;">{display_location}</div>
     </div>
     <div class="stat-card">
       <div class="stat-card-title">AI Status</div>
@@ -782,7 +796,7 @@ def appointments_dashboard(format: Optional[str] = None):
   <div class="table-card">
     <div class="table-header">
       <h2>Recent Patient Bookings (Live Schedule)</h2>
-      <a href="/appointments" style="font-size: 13px; color: #0284c7; text-decoration: none; font-weight: 600;">&#128260; Refresh Table</a>
+      <a href="/appointments{f'?clinic=' + clinic if clinic else ''}" style="font-size: 13px; color: #0284c7; text-decoration: none; font-weight: 600;">&#128260; Refresh Table</a>
     </div>
 
     <!-- Desktop Table View -->
