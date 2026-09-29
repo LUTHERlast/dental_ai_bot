@@ -46,7 +46,7 @@ class AppointmentBooking(BaseModel):
     date_time: str
     clinic_name: Optional[str] = "Al Dhabi Dental Centre"
 
-APPOINTMENTS_FILE = ROOT_DIR / "outputs" / "clinic_appointments.json"
+APPOINTMENTS_FILE = Path(__file__).resolve().parent / "clinic_appointments.json"
 
 DEFAULT_CLINIC_CONTEXT = """
 You are 'Aura', a polite, empathetic, and professional AI Medical Receptionist for {clinic_name} in {clinic_location}.
@@ -219,6 +219,7 @@ def appointments_dashboard(format: Optional[str] = None):
     has_conflicts = any(count > 1 for norm_t, count in time_counts.items() if norm_t)
 
     rows_html = ""
+    mobile_cards_html = ""
     for appt in reversed(appointments):
         bid = appt.get("booking_id", "N/A")
         pname = appt.get("patient_name", "Anonymous")
@@ -230,35 +231,69 @@ def appointments_dashboard(format: Optional[str] = None):
         
         is_conflict = time_counts.get(normalize_time(dtime), 0) > 1
         if is_conflict:
-            status_html = '<span class="badge badge-conflict">⚠️ Overlap Conflict</span>'
+            status_html = '<span class="badge badge-conflict">âš ï¸ Overlap Conflict</span>'
         else:
             status_html = '<span class="badge badge-confirmed">Confirmed</span>'
 
         wa_link = f"https://wa.me/{clean_phone}?text=Hello%20{pname},%20confirming%20your%20appointment%20at%20Al%20Dhabi%20Dental%20Centre!"
         
+        # Desktop table row
         rows_html += f"""
         <tr class="{'row-conflict' if is_conflict else ''}">
           <td><span class="badge badge-id">{bid}</span></td>
           <td><strong>{pname}</strong></td>
-          <td>{phone}</td>
+          <td><a href="tel:{clean_phone}" style="color:#0369a1; text-decoration:none; font-weight:600;">{phone}</a></td>
           <td><span class="badge badge-treatment">{treatment}</span></td>
           <td><strong>{dtime}</strong></td>
           <td class="text-muted">{booked_at}</td>
           <td>{status_html}</td>
           <td>
-            <a href="{wa_link}" target="_blank" class="btn-wa">💬 WhatsApp</a>
+            <a href="{wa_link}" target="_blank" class="btn-wa">ðŸ’¬ WhatsApp</a>
           </td>
         </tr>
+        """
+
+        # Mobile card view
+        mobile_cards_html += f"""
+        <div class="patient-card {'row-conflict' if is_conflict else ''}">
+          <div class="card-head">
+            <span class="badge badge-id">{bid}</span>
+            {status_html}
+          </div>
+          <div class="card-patient-name">{pname}</div>
+          <div class="card-meta">
+            <div class="meta-row">
+              <span class="meta-label">ðŸ“… Date & Time</span>
+              <span class="meta-val meta-time">{dtime}</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">ðŸ¦· Service</span>
+              <span class="meta-val">{treatment}</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">ðŸ“ž Phone</span>
+              <span class="meta-val"><a href="tel:{clean_phone}" style="color:#0284c7; font-weight:700; text-decoration:none;">{phone}</a></span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">â±ï¸ Booked</span>
+              <span class="meta-val text-muted">{booked_at}</span>
+            </div>
+          </div>
+          <a href="{wa_link}" target="_blank" class="btn-wa-card">
+            ðŸ’¬ Open WhatsApp Confirmation
+          </a>
+        </div>
         """
         
     if not rows_html:
         rows_html = "<tr><td colspan='8' style='text-align:center; padding:32px; color:#64748b;'>No appointments booked yet. The AI is waiting for incoming patients.</td></tr>"
+        mobile_cards_html = "<div style='text-align:center; padding:32px; color:#64748b; background:#fff; border-radius:12px;'>No appointments booked yet. The AI is waiting for incoming patients.</div>"
 
     conflict_banner_html = ""
     if has_conflicts:
         conflict_banner_html = """
         <div class="alert-conflict">
-          <div class="alert-icon">⚠️</div>
+          <div class="alert-icon">âš ï¸</div>
           <div>
             <strong>Schedule Overlap Detected:</strong> Multiple patients booked the same time slot (highlighted in red). The AI will automatically prevent future overlapping bookings. Front desk follow-up recommended.
           </div>
@@ -269,62 +304,70 @@ def appointments_dashboard(format: Optional[str] = None):
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Al Dhabi Dental Centre — AI Reception Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Al Dhabi Dental Centre â€” AI Reception Dashboard</title>
 <style>
+  * {{
+    box-sizing: border-box;
+  }}
   body {{
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: #f1f5f9;
     color: #1e293b;
+    -webkit-font-smoothing: antialiased;
   }}
   .navbar {{
     background: linear-gradient(135deg, #0284c7, #0369a1);
     color: #ffffff;
-    padding: 18px 36px;
+    padding: 16px 28px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     box-shadow: 0 4px 12px rgba(2, 132, 199, 0.2);
+    flex-wrap: wrap;
+    gap: 12px;
   }}
   .navbar h1 {{
     margin: 0;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 700;
   }}
   .navbar-status {{
-    font-size: 13px;
+    font-size: 12px;
     background: rgba(255, 255, 255, 0.2);
-    padding: 6px 14px;
+    padding: 6px 12px;
     border-radius: 20px;
+    font-weight: 500;
   }}
   .container {{
     max-width: 1200px;
-    margin: 32px auto;
-    padding: 0 24px;
+    margin: 24px auto;
+    padding: 0 20px;
   }}
   .stats-grid {{
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    margin-bottom: 28px;
+    gap: 16px;
+    margin-bottom: 24px;
   }}
   .stat-card {{
     background: #ffffff;
-    padding: 22px;
+    padding: 20px;
     border-radius: 12px;
     border: 1px solid #e2e8f0;
     box-shadow: 0 2px 4px rgba(0,0,0,0.03);
   }}
   .stat-card-title {{
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     color: #64748b;
     text-transform: uppercase;
-    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
   }}
   .stat-card-val {{
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 800;
     color: #0f172a;
   }}
@@ -336,32 +379,41 @@ def appointments_dashboard(format: Optional[str] = None):
     overflow: hidden;
   }}
   .table-header {{
-    padding: 20px 24px;
+    padding: 16px 20px;
     border-bottom: 1px solid #e2e8f0;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background: #ffffff;
   }}
   .table-header h2 {{
     margin: 0;
-    font-size: 17px;
+    font-size: 16px;
     color: #1e293b;
+    font-weight: 700;
+  }}
+  .table-scroll-container {{
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }}
   table {{
     width: 100%;
     border-collapse: collapse;
     text-align: left;
     font-size: 14px;
+    min-width: 750px;
   }}
   th {{
     background: #f8fafc;
     color: #475569;
     font-weight: 600;
-    padding: 14px 20px;
+    padding: 12px 18px;
     border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
   }}
   td {{
-    padding: 16px 20px;
+    padding: 14px 18px;
     border-bottom: 1px solid #f1f5f9;
     vertical-align: middle;
   }}
@@ -374,6 +426,7 @@ def appointments_dashboard(format: Optional[str] = None):
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
+    white-space: nowrap;
   }}
   .badge-id {{
     background: #e0f2fe;
@@ -399,18 +452,18 @@ def appointments_dashboard(format: Optional[str] = None):
   .alert-conflict {{
     background: #fffbeb;
     border-left: 5px solid #f59e0b;
-    padding: 16px 20px;
+    padding: 14px 18px;
     border-radius: 8px;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     color: #92400e;
     font-size: 14px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   }}
   .alert-icon {{
-    font-size: 24px;
+    font-size: 22px;
   }}
   .btn-wa {{
     background: #25D366;
@@ -420,8 +473,11 @@ def appointments_dashboard(format: Optional[str] = None):
     border-radius: 8px;
     font-size: 12px;
     font-weight: 600;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     box-shadow: 0 2px 4px rgba(37,211,102,0.2);
+    white-space: nowrap;
   }}
   .btn-wa:hover {{
     background: #20ba5a;
@@ -430,13 +486,128 @@ def appointments_dashboard(format: Optional[str] = None):
     color: #94a3b8;
     font-size: 12px;
   }}
+
+  /* Mobile Card View styles */
+  .mobile-cards-view {{
+    display: none;
+    padding: 14px;
+    gap: 14px;
+    flex-direction: column;
+    background: #f8fafc;
+  }}
+  .patient-card {{
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }}
+  .card-head {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }}
+  .card-patient-name {{
+    font-size: 18px;
+    font-weight: 800;
+    color: #0f172a;
+  }}
+  .card-meta {{
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    background: #f8fafc;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #f1f5f9;
+  }}
+  .meta-row {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }}
+  .meta-label {{
+    color: #64748b;
+    font-weight: 500;
+  }}
+  .meta-val {{
+    color: #1e293b;
+    font-weight: 600;
+  }}
+  .meta-time {{
+    color: #0284c7;
+    font-weight: 700;
+  }}
+  .btn-wa-card {{
+    background: #25D366;
+    color: #ffffff !important;
+    text-decoration: none;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-shadow: 0 4px 10px rgba(37,211,102,0.25);
+    margin-top: 4px;
+  }}
+
+  /* MEDIA QUERIES FOR MOBILE */
+  @media (max-width: 768px) {{
+    .navbar {{
+      padding: 14px 16px;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }}
+    .navbar h1 {{
+      font-size: 16px;
+    }}
+    .navbar-status {{
+      align-self: flex-start;
+    }}
+    .container {{
+      margin: 14px auto;
+      padding: 0 12px;
+    }}
+    .stats-grid {{
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }}
+    .stat-card {{
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }}
+    .stat-card-title {{
+      margin-bottom: 0;
+      font-size: 11px;
+    }}
+    .stat-card-val {{
+      font-size: 20px;
+    }}
+    .desktop-table-view {{
+      display: none;
+    }}
+    .mobile-cards-view {{
+      display: flex;
+    }}
+  }}
 </style>
 </head>
 <body>
 
 <div class="navbar">
-  <h1>🦷 Al Dhabi Dental Centre — Reception Dashboard</h1>
-  <div class="navbar-status">● 24/7 AI Receptionist: Active</div>
+  <h1>ðŸ¦· Al Dhabi Dental Centre â€” Reception Dashboard</h1>
+  <div class="navbar-status">â— 24/7 AI Receptionist: Active</div>
 </div>
 
 <div class="container">
@@ -448,36 +619,45 @@ def appointments_dashboard(format: Optional[str] = None):
     </div>
     <div class="stat-card">
       <div class="stat-card-title">Location</div>
-      <div class="stat-card-val" style="font-size: 20px; padding-top: 6px;">Mussafah, Abu Dhabi</div>
+      <div class="stat-card-val" style="font-size: 16px; font-weight: 700;">Mussafah, Abu Dhabi</div>
     </div>
     <div class="stat-card">
       <div class="stat-card-title">AI Status</div>
-      <div class="stat-card-val" style="font-size: 20px; color: #16a34a; padding-top: 6px;">100% Online</div>
+      <div class="stat-card-val" style="font-size: 16px; color: #16a34a; font-weight: 700;">100% Online</div>
     </div>
   </div>
 
   <div class="table-card">
     <div class="table-header">
       <h2>Recent Patient Bookings (Live Schedule)</h2>
-      <a href="/appointments" style="font-size: 13px; color: #0284c7; text-decoration: none; font-weight: 600;">🔄 Refresh Table</a>
+      <a href="/appointments" style="font-size: 13px; color: #0284c7; text-decoration: none; font-weight: 600;">ðŸ”„ Refresh Table</a>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Booking ID</th>
-          <th>Patient Name</th>
-          <th>Phone</th>
-          <th>Treatment</th>
-          <th>Requested Date & Time</th>
-          <th>Time Booked</th>
-          <th>Status</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows_html}
-      </tbody>
-    </table>
+
+    <!-- Desktop Table View -->
+    <div class="desktop-table-view table-scroll-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Booking ID</th>
+            <th>Patient Name</th>
+            <th>Phone</th>
+            <th>Treatment</th>
+            <th>Requested Date & Time</th>
+            <th>Time Booked</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows_html}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mobile Native Cards View -->
+    <div class="mobile-cards-view">
+      {mobile_cards_html}
+    </div>
   </div>
 </div>
 
