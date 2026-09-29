@@ -99,6 +99,158 @@ def get_widget():
         raise HTTPException(status_code=404, detail="Widget script not found")
     return FileResponse(widget_path, media_type="application/javascript")
 
+@app.get("/demo", response_class=HTMLResponse)
+def get_demo_page():
+    """Serves the live interactive clinic demo website for client preview."""
+    demo_html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Al Dhabi Dental & Orthodontic Centre | Live AI Preview</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #1e293b;
+    background: #f8fafc;
+  }
+  header {
+    background: #ffffff;
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .logo {
+    font-size: 20px;
+    font-weight: 800;
+    color: #0284c7;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .badge-demo {
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 12px;
+  }
+  .nav-btn {
+    background: #0284c7;
+    color: #ffffff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .hero {
+    padding: 48px 20px;
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .hero h1 {
+    font-size: 32px;
+    color: #0f172a;
+    margin-bottom: 14px;
+  }
+  .hero p {
+    font-size: 16px;
+    color: #64748b;
+    max-width: 650px;
+    margin: 0 auto 24px;
+    line-height: 1.6;
+  }
+  .cta-bubble-hint {
+    display: inline-block;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+    padding: 10px 18px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(22, 101, 52, 0.1);
+  }
+  .services {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 20px;
+    max-width: 1000px;
+    margin: 20px auto 60px;
+    padding: 0 20px;
+  }
+  .service-card {
+    background: #ffffff;
+    padding: 24px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  }
+  .service-card h3 {
+    margin-top: 0;
+    color: #0369a1;
+    font-size: 18px;
+  }
+  .service-card p {
+    color: #64748b;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    ðŸ¦· Al Dhabi Dental Centre
+    <span class="badge-demo">24/7 AI Reception Preview</span>
+  </div>
+  <a href="/appointments" class="nav-btn" target="_blank">ðŸ“‹ View Reception Dashboard</a>
+</header>
+
+<div class="hero">
+  <h1>World-Class Dental Care in Mussafah, Abu Dhabi</h1>
+  <p>Providing advanced cosmetic dentistry, orthodontic care, and emergency dental solutions with over 35 years of clinical excellence.</p>
+  <div class="cta-bubble-hint">
+    ðŸ‘‡ Tap the blue chat bubble at the bottom-right to test your 24/7 AI Receptionist!
+  </div>
+</div>
+
+<div class="services">
+  <div class="service-card">
+    <h3>ðŸ¦· Orthodontics & Invisalign</h3>
+    <p>Straighten your smile discreetly with certified clear aligners and gentle specialist treatments.</p>
+  </div>
+  <div class="service-card">
+    <h3>âœ¨ Laser Teeth Whitening</h3>
+    <p>In-clinic laser whitening sessions that brighten your smile up to 8 shades in just 45 minutes.</p>
+  </div>
+  <div class="service-card">
+    <h3>ðŸ”© Dental Implants & Surgery</h3>
+    <p>Permanent, natural-looking tooth replacements utilizing 3D digital imaging guidance.</p>
+  </div>
+</div>
+
+<!-- LIVE EMBEDDABLE SCRIPT -->
+<script 
+  src="/widget.js" 
+  data-clinic="Al Dhabi Dental Centre" 
+  data-whatsapp="+971588360378">
+</script>
+
+</body>
+</html>"""
+    return HTMLResponse(content=demo_html_content)
+
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
     if not GEMINI_API_KEY:
