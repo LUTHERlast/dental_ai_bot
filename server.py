@@ -1876,3 +1876,309 @@ def appointments_dashboard(clinic: Optional[str] = None, location: Optional[str]
 </body>
 </html>"""
     return HTMLResponse(content=html_content, media_type="text/html; charset=utf-8")
+
+# ==================== AUTONOMOUS CLIENT ACQUISITION & CRM SYSTEM ====================
+
+def _resolve_crm_files():
+    base = Path(__file__).resolve().parent
+    candidates = [
+        base / "outreach_crm.json",
+        base.parent / "outputs" / "outreach_crm.json",
+        base.parent.parent / "dental_ai_bot_clone" / "outreach_crm.json"
+    ]
+    return candidates
+
+def get_crm_database() -> List[Dict]:
+    for p in _resolve_crm_files():
+        if p.exists():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if data and len(data) > 0:
+                    return data
+            except Exception:
+                pass
+    return []
+
+def save_crm_database(data: List[Dict]):
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    for p in _resolve_crm_files():
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+        except Exception:
+            pass
+
+@app.get("/api/crm/leads")
+def api_crm_leads():
+    return get_crm_database()
+
+@app.post("/api/crm/update-status")
+def api_crm_update_status(payload: Dict):
+    from datetime import datetime, timedelta
+    lead_id = payload.get("lead_id")
+    new_status = payload.get("status")
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    leads = get_crm_database()
+    for l in leads:
+        if l.get("lead_id") == lead_id:
+            l["status"] = new_status
+            if new_status == "CONTACTED":
+                l["last_contacted_at"] = now_str
+                l["next_followup_at"] = (datetime.now() + timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+            elif new_status == "FOLLOWUP_1_SENT":
+                l["last_contacted_at"] = now_str
+                l["next_followup_at"] = (datetime.now() + timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
+            elif new_status == "FOLLOWUP_2_SENT":
+                l["last_contacted_at"] = now_str
+                l["next_followup_at"] = None
+            break
+
+    save_crm_database(leads)
+    return {"success": True, "lead_id": lead_id, "status": new_status}
+
+@app.get("/crm", response_class=HTMLResponse)
+@app.get("/outreach", response_class=HTMLResponse)
+def crm_dashboard():
+    import urllib.parse
+    leads = get_crm_database()
+    total_prospects = len(leads)
+    contacted_count = sum(1 for l in leads if l.get("status") in ["CONTACTED", "FOLLOWUP_1_SENT", "FOLLOWUP_2_SENT", "REPLIED", "WON"])
+    won_count = sum(1 for l in leads if l.get("status") == "WON")
+    pipeline_val = len(leads) * 1500
+
+    cards_html = ""
+    for l in leads:
+        lid = l.get("lead_id", "N/A")
+        agency = l.get("agency_name", "UAE Brokerage")
+        broker = l.get("broker_name", "Senior Broker")
+        phone = l.get("phone", "")
+        clean_p = l.get("phone_clean", re.sub(r'[^0-9]', '', phone))
+        territory = l.get("territory", "Abu Dhabi & Dubai")
+        niche = l.get("niche", "Luxury Real Estate")
+        status = l.get("status", "DISCOVERED")
+        demo_url = l.get("demo_url", f"/demo?agency={urllib.parse.quote(agency)}")
+        
+        msgs = l.get("messages", {})
+        initial_msg = msgs.get("initial", "")
+        followup1_msg = msgs.get("followup1", "")
+        followup2_msg = msgs.get("followup2", "")
+
+        wa_initial = f"https://wa.me/{clean_p}?text={urllib.parse.quote(initial_msg)}"
+        wa_f1 = f"https://wa.me/{clean_p}?text={urllib.parse.quote(followup1_msg)}"
+        wa_f2 = f"https://wa.me/{clean_p}?text={urllib.parse.quote(followup2_msg)}"
+
+        # Status badge classes
+        status_colors = {
+            "DISCOVERED": ("#38bdf8", "rgba(56, 189, 248, 0.15)"),
+            "CONTACTED": ("#fbbf24", "rgba(251, 191, 36, 0.15)"),
+            "FOLLOWUP_1_DUE": ("#f97316", "rgba(249, 115, 22, 0.2)"),
+            "FOLLOWUP_1_SENT": ("#fbbf24", "rgba(251, 191, 36, 0.15)"),
+            "FOLLOWUP_2_DUE": ("#ef4444", "rgba(239, 68, 68, 0.2)"),
+            "REPLIED": ("#a855f7", "rgba(168, 85, 247, 0.2)"),
+            "WON": ("#4ade80", "rgba(74, 222, 128, 0.2)")
+        }
+        badge_fg, badge_bg = status_colors.get(status, ("#94a3b8", "rgba(148, 163, 184, 0.15)"))
+
+        cards_html += f"""
+        <div class="prospect-card" id="card-{lid}">
+          <div class="prospect-head">
+            <div>
+              <div class="prospect-agency">{agency}</div>
+              <div class="prospect-broker">&#128100; {broker} &bull; <a href="tel:{clean_p}" style="color:#38bdf8; text-decoration:none;">{phone}</a></div>
+            </div>
+            <span class="status-badge" style="color:{badge_fg}; background:{badge_bg}; border: 1px solid {badge_fg};">{status}</span>
+          </div>
+
+          <div class="prospect-meta">
+            <div><strong>Territory:</strong> {territory}</div>
+            <div><strong>Niche:</strong> {niche}</div>
+          </div>
+
+          <div class="demo-box">
+            <span style="color:#94a3b8; font-size:11px;">PERSONALIZED CLIENT DEMO LINK:</span><br>
+            <a href="{demo_url}" target="_blank" class="demo-link">&#128279; {demo_url}</a>
+          </div>
+
+          <div class="actions-grid">
+            <a href="{wa_initial}" target="_blank" onclick="updateStatus('{lid}', 'CONTACTED')" class="btn-action btn-initial">
+              &#128172; 1-Click Initial Pitch
+            </a>
+            <a href="{wa_f1}" target="_blank" onclick="updateStatus('{lid}', 'FOLLOWUP_1_SENT')" class="btn-action btn-f1">
+              &#9201; Send 24h Follow-Up
+            </a>
+            <a href="{wa_f2}" target="_blank" onclick="updateStatus('{lid}', 'FOLLOWUP_2_SENT')" class="btn-action btn-f2">
+              &#9888;&#65039; Send 48h Breakup
+            </a>
+            <button onclick="updateStatus('{lid}', 'WON')" class="btn-action btn-won">
+              &#127942; Mark Won (1,500 AED)
+            </button>
+          </div>
+        </div>
+        """
+
+    crm_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoSales Agent &mdash; UAE Real Estate Client Acquisition & Follow-Up Engine</title>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #090d16;
+    color: #f1f5f9;
+    padding-bottom: 60px;
+  }}
+  .header {{
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    padding: 24px 32px;
+    border-bottom: 1px solid #334155;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+  }}
+  .logo {{ font-size: 20px; font-weight: 800; color: #38bdf8; }}
+  .container {{ max-width: 1200px; margin: 32px auto; padding: 0 20px; }}
+  .kpi-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }}
+  .kpi-card {{
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    padding: 20px;
+  }}
+  .kpi-title {{ font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; }}
+  .kpi-val {{ font-size: 30px; font-weight: 800; color: #38bdf8; }}
+  .section-h {{ font-size: 18px; font-weight: 800; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }}
+  .prospect-grid {{ display: flex; flex-direction: column; gap: 16px; }}
+  .prospect-card {{
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 16px;
+    padding: 22px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }}
+  .prospect-head {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }}
+  .prospect-agency {{ font-size: 20px; font-weight: 800; color: #f8fafc; }}
+  .prospect-broker {{ font-size: 13px; color: #94a3b8; margin-top: 4px; }}
+  .status-badge {{
+    font-size: 11px;
+    font-weight: 800;
+    padding: 4px 12px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }}
+  .prospect-meta {{
+    font-size: 13px;
+    color: #cbd5e1;
+    background: #131d33;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }}
+  .demo-box {{
+    background: #090d16;
+    border: 1px solid #1e293b;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 12px;
+  }}
+  .demo-link {{ color: #38bdf8; text-decoration: none; word-break: break-all; font-weight: 600; }}
+  .demo-link:hover {{ text-decoration: underline; }}
+  .actions-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px;
+  }}
+  .btn-action {{
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: transform 0.15s, opacity 0.15s;
+  }}
+  .btn-action:hover {{ opacity: 0.9; transform: translateY(-1px); }}
+  .btn-initial {{ background: #25D366; color: #ffffff !important; }}
+  .btn-f1 {{ background: #0284c7; color: #ffffff !important; }}
+  .btn-f2 {{ background: #ea580c; color: #ffffff !important; }}
+  .btn-won {{ background: #16a34a; color: #ffffff !important; }}
+</style>
+<script>
+async function updateStatus(leadId, newStatus) {{
+  try {{
+    await fetch('/api/crm/update-status', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{ lead_id: leadId, status: newStatus }})
+    }});
+    const badge = document.querySelector('#card-' + leadId + ' .status-badge');
+    if (badge) {{
+      badge.textContent = newStatus;
+    }}
+  }} catch (e) {{
+    console.error('Error updating lead status:', e);
+  }}
+}}
+</script>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">&#9881;&#65039; AutoSales Agent &mdash; UAE Broker Acquisition Engine</div>
+  <a href="/leads" target="_blank" style="color:#38bdf8; text-decoration:none; font-size:13px; font-weight:700;">&#128202; View Buyer Leads Dashboard &rarr;</a>
+</div>
+
+<div class="container">
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-title">Verified UAE Brokers Loaded</div>
+      <div class="kpi-val">{total_prospects}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">In Active Outreach</div>
+      <div class="kpi-val" style="color:#fbbf24;">{contacted_count}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Broker Contracts Won</div>
+      <div class="kpi-val" style="color:#4ade80;">{won_count}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Pipeline Revenue Potential</div>
+      <div class="kpi-val" style="color:#38bdf8;">{pipeline_val:,} AED</div>
+    </div>
+  </div>
+
+  <div class="section-h">
+    <span>Autonomous Outreach Queue (1-Click Personalized WhatsApp Dispatch)</span>
+  </div>
+
+  <div class="prospect-grid">
+    {cards_html}
+  </div>
+</div>
+
+</body>
+</html>"""
+    return HTMLResponse(content=crm_html, media_type="text/html; charset=utf-8")
