@@ -231,7 +231,7 @@ def get_widget():
     return FileResponse(widget_path, media_type="application/javascript")
 
 RE_WIDGET_JS_CODE = r"""(function () {
-  // Determine server base URL from script tag
+  // Determine server base URL
   const scriptTag = document.currentScript;
   let serverUrl = "https://dental-ai-bot-0j49.onrender.com";
   if (scriptTag && scriptTag.src) {
@@ -249,63 +249,66 @@ RE_WIDGET_JS_CODE = r"""(function () {
   const locationName = (scriptTag && scriptTag.getAttribute("data-location")) || "Abu Dhabi & Dubai";
   const cleanPhone = whatsappNumber.replace(/[^0-9]/g, "");
 
-  // Inject Luxury Styles
+  // Inject Styles
   const style = document.createElement("style");
   style.innerHTML = `
     .re-chat-bubble-btn {
       position: fixed;
       bottom: 24px;
       right: 24px;
-      height: 56px;
-      padding: 0 22px;
-      border-radius: 28px;
-      background: linear-gradient(135deg, #0f172a, #1e293b);
-      border: 1px solid #38bdf8;
+      width: 62px;
+      height: 62px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #0284c7, #0ea5e9);
       color: #ffffff;
       display: flex;
       align-items: center;
-      gap: 10px;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.3px;
+      justify-content: center;
+      font-size: 30px;
       cursor: pointer;
-      box-shadow: 0 8px 30px rgba(2, 132, 199, 0.35);
-      z-index: 999999;
+      box-shadow: 0 10px 28px rgba(2, 132, 199, 0.55);
+      z-index: 99999999;
       transition: transform 0.25s ease, box-shadow 0.25s ease;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
     .re-chat-bubble-btn:hover {
-      transform: translateY(-2px) scale(1.03);
-      box-shadow: 0 12px 35px rgba(56, 189, 248, 0.45);
+      transform: scale(1.1);
+      box-shadow: 0 14px 35px rgba(14, 165, 233, 0.7);
     }
-    .re-pulse-dot {
-      width: 10px;
-      height: 10px;
-      background: #4ade80;
+    .re-bubble-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      background: #22c55e;
+      border: 2px solid #0f172a;
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
-      box-shadow: 0 0 10px #4ade80;
+      box-shadow: 0 0 8px #22c55e;
       animation: rePulse 2s infinite;
     }
     @keyframes rePulse {
-      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
-      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); }
-      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
     }
     .re-chat-window {
       position: fixed;
-      bottom: 92px;
+      bottom: 98px;
       right: 24px;
       width: 400px;
       max-width: calc(100vw - 32px);
       height: 560px;
-      max-height: calc(100vh - 110px);
+      max-height: calc(100vh - 120px);
       background: #0b1120;
       border-radius: 18px;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
       display: none;
       flex-direction: column;
       overflow: hidden;
-      z-index: 999999;
+      z-index: 99999999;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       border: 1px solid #1e293b;
     }
@@ -331,6 +334,13 @@ RE_WIDGET_JS_CODE = r"""(function () {
       align-items: center;
       gap: 6px;
       margin-top: 2px;
+    }
+    .re-pulse-dot {
+      width: 7px;
+      height: 7px;
+      background: #22c55e;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #22c55e;
     }
     .re-close-btn {
       background: transparent;
@@ -499,8 +509,8 @@ RE_WIDGET_JS_CODE = r"""(function () {
   const container = document.createElement("div");
   container.innerHTML = `
     <div id="re-chat-bubble" class="re-chat-bubble-btn" title="Speak with Luxury Property Advisor">
-      <span class="re-pulse-dot"></span>
-      <span>Aria &bull; Property Advisor</span>
+      <span class="re-bubble-badge"></span>
+      <span>&#128172;</span>
     </div>
 
     <div id="re-chat-window" class="re-chat-window">
@@ -508,7 +518,7 @@ RE_WIDGET_JS_CODE = r"""(function () {
         <div>
           <div class="re-header-title">${agencyName}</div>
           <div class="re-header-subtitle">
-            <span class="re-pulse-dot" style="width:7px; height:7px;"></span>
+            <span class="re-pulse-dot"></span>
             Aria &bull; Senior Investment Advisor
           </div>
         </div>
@@ -524,10 +534,10 @@ RE_WIDGET_JS_CODE = r"""(function () {
       </div>
 
       <div class="re-chat-quick-actions">
-        <button class="re-quick-btn" data-text="I am looking for a beachfront villa in Saadiyat Island Abu Dhabi.">ðŸ–ï¸ Saadiyat Villa</button>
-        <button class="re-quick-btn" data-text="I want a luxury apartment or penthouse in Downtown Dubai.">ðŸ™ï¸ Downtown Dubai</button>
-        <button class="re-quick-btn" data-text="What properties qualify for the UAE 10-Year Golden Visa?">ðŸ›‚ Golden Visa (2M+ AED)</button>
-        <button class="re-quick-btn" data-text="I would like to speak directly with broker ${brokerName} on WhatsApp.">ðŸ“² WhatsApp Broker</button>
+        <button class="re-quick-btn" data-text="I am looking for a beachfront villa in Saadiyat Island Abu Dhabi.">&#127958; Saadiyat Villa</button>
+        <button class="re-quick-btn" data-text="I want a luxury apartment or penthouse in Downtown Dubai.">&#127961; Downtown Dubai</button>
+        <button class="re-quick-btn" data-text="What properties qualify for the UAE 10-Year Golden Visa?">&#128706; Golden Visa (2M+ AED)</button>
+        <button class="re-quick-btn" data-text="I would like to speak directly with broker ${brokerName} on WhatsApp.">&#128242; WhatsApp Broker</button>
       </div>
 
       <form id="re-chat-form" class="re-chat-input-area">
@@ -563,12 +573,11 @@ RE_WIDGET_JS_CODE = r"""(function () {
     const div = document.createElement("div");
     div.className = `re-msg ${role === "user" ? "re-msg-user" : "re-msg-bot"}`;
 
-    // Clean any structured internal tag
+    // Clean internal lead tags safely
     let cleanText = text.replace(/\[QUALIFIED_LEAD:[^\]]+\]/g, "").trim();
 
-    // Format line breaks
-    let html = cleanText.replace(/
-/g, "<br>");
+    // Format newlines safely without broken regex
+    let html = cleanText.split(String.fromCharCode(10)).join("<br>");
 
     // If an investor lead was finalized and captured
     if (lead) {
@@ -660,7 +669,7 @@ RE_WIDGET_JS_CODE = r"""(function () {
 @app.get("/re/widget.js")
 @app.get("/re-widget.js")
 def get_re_widget():
-    """Serves luxury real estate widget (inline fallback ensures 100% reliability)."""
+    """Serves luxury real estate widget with guaranteed inline fallback."""
     widget_path = Path(__file__).parent / "static" / "re_widget.js"
     if widget_path.exists():
         return FileResponse(widget_path, media_type="application/javascript")
@@ -1395,12 +1404,15 @@ def leads_dashboard(agency: Optional[str] = None, broker: Optional[str] = None):
 
 @app.get("/demo", response_class=HTMLResponse)
 def get_demo_page(clinic: Optional[str] = None, agency: Optional[str] = None, broker: Optional[str] = None, whatsapp: Optional[str] = None, location: Optional[str] = None):
-    # If agency is specified, redirect to real estate demo
-    if agency:
-        return get_re_demo(agency=agency, broker=broker or "Ahmad Al Zaabi", whatsapp=whatsapp or "+971547400174")
+    # If clinic is not specified, ALWAYS serve luxury real estate!
+    if not clinic:
+        display_agency = agency or "Apex Prime Real Estate"
+        display_broker = broker or "Ahmad Al Zaabi"
+        display_whatsapp = whatsapp or "+971547400174"
+        return get_re_demo(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp)
 
     # Otherwise dental clinic demo
-    display_clinic = clinic or "Al Dhabi Dental Centre"
+    display_clinic = clinic
     display_whatsapp = whatsapp or "+971588360378"
     display_loc = location or "Abu Dhabi, UAE"
 
