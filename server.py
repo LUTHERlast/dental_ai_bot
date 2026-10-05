@@ -233,7 +233,7 @@ def get_widget():
 RE_WIDGET_JS_CODE = r"""(function () {
   // Determine server base URL
   const scriptTag = document.currentScript;
-  let serverUrl = "https://dental-ai-bot-0j49.onrender.com";
+  let serverUrl = "https://apex-luxury-ai.onrender.com";
   if (scriptTag && scriptTag.src) {
     try {
       const urlObj = new URL(scriptTag.src);
@@ -1879,19 +1879,34 @@ def appointments_dashboard(clinic: Optional[str] = None, location: Optional[str]
 
 # ==================== AUTONOMOUS CLIENT ACQUISITION & CRM SYSTEM ====================
 
-CRM_DATABASE_FILE = Path(__file__).resolve().parent / "outreach_crm.json"
+def _resolve_crm_files():
+    base = Path(__file__).resolve().parent
+    candidates = [
+        base / "outreach_crm.json",
+        base.parent / "outputs" / "outreach_crm.json",
+        base.parent.parent / "dental_ai_bot_clone" / "outreach_crm.json"
+    ]
+    return candidates
 
 def get_crm_database() -> List[Dict]:
-    if CRM_DATABASE_FILE.exists():
-        try:
-            return json.loads(CRM_DATABASE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            return []
+    for p in _resolve_crm_files():
+        if p.exists():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if data and len(data) > 0:
+                    return data
+            except Exception:
+                pass
     return []
 
 def save_crm_database(data: List[Dict]):
-    CRM_DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CRM_DATABASE_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    for p in _resolve_crm_files():
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+        except Exception:
+            pass
 
 @app.get("/api/crm/leads")
 def api_crm_leads():
@@ -1899,6 +1914,7 @@ def api_crm_leads():
 
 @app.post("/api/crm/update-status")
 def api_crm_update_status(payload: Dict):
+    from datetime import datetime, timedelta
     lead_id = payload.get("lead_id")
     new_status = payload.get("status")
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1924,6 +1940,7 @@ def api_crm_update_status(payload: Dict):
 @app.get("/crm", response_class=HTMLResponse)
 @app.get("/outreach", response_class=HTMLResponse)
 def crm_dashboard():
+    import urllib.parse
     leads = get_crm_database()
     total_prospects = len(leads)
     contacted_count = sum(1 for l in leads if l.get("status") in ["CONTACTED", "FOLLOWUP_1_SENT", "FOLLOWUP_2_SENT", "REPLIED", "WON"])
@@ -1947,7 +1964,6 @@ def crm_dashboard():
         followup1_msg = msgs.get("followup1", "")
         followup2_msg = msgs.get("followup2", "")
 
-        import urllib.parse
         wa_initial = f"https://wa.me/{clean_p}?text={urllib.parse.quote(initial_msg)}"
         wa_f1 = f"https://wa.me/{clean_p}?text={urllib.parse.quote(followup1_msg)}"
         wa_f2 = f"https://wa.me/{clean_p}?text={urllib.parse.quote(followup2_msg)}"
