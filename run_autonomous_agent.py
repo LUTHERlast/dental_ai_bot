@@ -95,7 +95,7 @@ def show_status():
         st = l.get("status", "DISCOVERED")
         print(f"{i:<3} {ag:<32} {br:<20} {ph:<17} {st:<15}")
     print("=" * 75)
-    print("💡 Command Center Web URL: https://apex-luxury-ai.onrender.com/crm")
+    print("💡 Command Center Web URL: https://apex-properties-ai.onrender.com/crm")
 
 def discover_more_brokers():
     print_banner()
@@ -216,9 +216,89 @@ def dispatch_next_lead(auto_open=True):
         except Exception as e:
             print(f"Could not open browser: {e}")
 
-def run_daemon(poll_interval_seconds=1800):
+def auto_send_with_playwright(limit=1, delay_between=35):
+    """
+    Fully automated hands-free WhatsApp sender using Playwright.
+    Opens WhatsApp Web, types and sends the message, and updates CRM state automatically.
+    """
+    print_banner()
+    try:
+        from tools.whatsapp_auto_bot import WhatsAppAutoBot
+    except ImportError:
+        print("❌ Playwright bot module not found. Run: uv pip install playwright")
+        return
+
+    bot = WhatsAppAutoBot(headless=False)
+    leads = load_crm()
+    sent_count = 0
+
+    for _ in range(limit):
+        target = None
+        msg_type = "initial"
+
+        for l in leads:
+            if l.get("status") == "FOLLOWUP_1_DUE":
+                target = l
+                msg_type = "followup1"
+                break
+        if not target:
+            for l in leads:
+                if l.get("status") == "FOLLOWUP_2_DUE":
+                    target = l
+                    msg_type = "followup2"
+                    break
+        if not target:
+            for l in leads:
+                if l.get("status") == "DISCOVERED":
+                    target = l
+                    msg_type = "initial"
+                    break
+
+        if not target:
+            print("🎉 All pending messages in queue have been dispatched!")
+            break
+
+        agency = target.get("agency_name")
+        broker = target.get("broker_name")
+        phone = target.get("phone")
+        msg = target.get("messages", {}).get(msg_type, "")
+
+        print(f"\n[{sent_count+1}/{limit}] 🤖 Auto-dispatching to {agency} ({broker}) — Stage: {msg_type.upper()}")
+        success = bot.send_message(phone, msg)
+
+        if success:
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if msg_type == "initial":
+                target["status"] = "CONTACTED"
+                target["last_contacted_at"] = now_str
+                target["next_followup_at"] = (datetime.now() + timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+            elif msg_type == "followup1":
+                target["status"] = "FOLLOWUP_1_SENT"
+                target["last_contacted_at"] = now_str
+                target["next_followup_at"] = (datetime.now() + timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
+            elif msg_type == "followup2":
+                target["status"] = "FOLLOWUP_2_SENT"
+                target["last_contacted_at"] = now_str
+
+            save_crm(leads)
+            sent_count += 1
+            print(f"✅ Lead status updated to {target['status']}!")
+            if sent_count < limit:
+                print(f"⏳ Waiting {delay_between}s before next contact to keep WhatsApp account 100% safe...")
+                time.sleep(delay_between)
+        else:
+            print(f"⚠️ Could not dispatch to {phone}. Marking as INVALID_PHONE and proceeding to next lead...")
+            target["status"] = "INVALID_PHONE"
+            save_crm(leads)
+            continue
+
+def run_daemon(poll_interval_seconds=1800, auto_send=False):
     print_banner()
     print(f"🛡️ AUTONOMOUS DAEMON ACTIVE — Checking pipeline every {poll_interval_seconds//60} minutes.")
+    if auto_send:
+        print("⚡ Full Auto-Send Mode: ENABLED (Will automatically dispatch due follow-ups)")
+    else:
+        print("💡 Safe Flag Mode: ENABLED (Flags follow-ups in CRM and console)")
     print("Press Ctrl+C to stop.\n")
     try:
         while True:
@@ -229,6 +309,24 @@ def run_daemon(poll_interval_seconds=1800):
             if len(discovered) < 3:
                 print("⚠️ Low uncontacted pipeline! Triggering autonomous broker hunter...")
                 discover_more_brokers()
+
+            if auto_send:
+                # 1. Prioritize overdue follow-ups
+                due_f1 = [l for l in leads if l.get("status") == "FOLLOWUP_1_DUE"]
+                due_f2 = [l for l in leads if l.get("status") == "FOLLOWUP_2_DUE"]
+                if due_f1 or due_f2:
+                    total_due = len(due_f1) + len(due_f2)
+                    print(f"⚡ Discovered {total_due} due follow-up(s). Auto-dispatching...")
+                    auto_send_with_playwright(limit=total_due)
+                else:
+                    # 2. Dispatch next uncontacted prospect
+                    uncontacted = [l for l in leads if l.get("status") == "DISCOVERED"]
+                    if uncontacted:
+                        print(f"⚡ {len(uncontacted)} uncontacted lead(s) in queue. Auto-dispatching initial pitch...")
+                        auto_send_with_playwright(limit=1)
+                    else:
+                        print("🎉 All leads in queue have been contacted. Waiting for responses or follow-ups...")
+
             print(f"Sleeping for {poll_interval_seconds//60} minutes...\n")
             time.sleep(poll_interval_seconds)
     except KeyboardInterrupt:
@@ -240,7 +338,10 @@ def main():
     parser.add_argument("--discover", action="store_true", help="Hunt fresh UAE brokers using Gemini")
     parser.add_argument("--followups", action="store_true", help="Check and flag overdue 24h/48h follow-ups")
     parser.add_argument("--dispatch-browser", action="store_true", help="Open WhatsApp Web for next lead in queue")
+    parser.add_argument("--auto-send", action="store_true", help="Hands-free auto-send next lead via Playwright bot")
+    parser.add_argument("--auto-send-all", type=int, default=0, help="Hands-free auto-send N leads with safe anti-ban delay")
     parser.add_argument("--daemon", action="store_true", help="Run background monitor loop")
+    parser.add_argument("--daemon-auto-send", action="store_true", help="Run background monitor loop with full auto-sending")
 
     args = parser.parse_args()
 
@@ -252,8 +353,14 @@ def main():
         check_followups()
     elif args.dispatch_browser:
         dispatch_next_lead(auto_open=True)
+    elif args.auto_send:
+        auto_send_with_playwright(limit=1)
+    elif args.auto_send_all > 0:
+        auto_send_with_playwright(limit=args.auto_send_all)
+    elif args.daemon_auto_send:
+        run_daemon(auto_send=True)
     elif args.daemon:
-        run_daemon()
+        run_daemon(auto_send=False)
     else:
         show_status()
 
