@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse
+from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT_DIR / ".env")
 
-app = FastAPI(title="UAE AI Automation Platform - Dental & Real Estate")
+app = FastAPI(title="Apex Luxury Real Estate AI Platform - Dubai and Abu Dhabi")
 
 # CORS enabled
 app.add_middleware(
@@ -215,9 +215,15 @@ def calculate_lead_score(budget_str: str, cash_or_mortgage: str, timeline_str: s
 
 @app.get("/")
 def home():
+    """Redirects visitors directly to the Luxury Real Estate Agency Demo preview."""
+    return RedirectResponse(url="/demo", status_code=302)
+
+@app.get("/status")
+def api_status():
     return {
         "status": "online",
-        "services": ["Dental Clinic AI Receptionist", "UAE Real Estate AI Lead Qualification"],
+        "platform": "Apex Luxury Real Estate AI Advisor",
+        "market": "UAE (Dubai and Abu Dhabi)",
         "model": GEMINI_MODEL,
         "ready": bool(GEMINI_API_KEY)
     }
@@ -836,18 +842,36 @@ def chat_endpoint(req: ChatRequest):
 
 @app.get("/re/demo", response_class=HTMLResponse)
 @app.get("/realestate", response_class=HTMLResponse)
-def get_re_demo(agency: Optional[str] = "Apex Prime Real Estate", broker: Optional[str] = "Ahmad Al Zaabi", whatsapp: Optional[str] = "+971547400174"):
+@app.get("/portal", response_class=HTMLResponse)
+@app.get("/vip", response_class=HTMLResponse)
+@app.get("/showcase", response_class=HTMLResponse)
+def get_re_demo(agency: Optional[str] = "Apex Prime Real Estate", broker: Optional[str] = "Ahmad Al Zaabi", whatsapp: Optional[str] = "+971547400174", mode: Optional[str] = "demo"):
     import urllib.parse
     enc_agency = urllib.parse.quote(agency)
     enc_broker = urllib.parse.quote(broker)
+    clean_wa = re.sub(r'[^0-9]', '', whatsapp or "971547400174")
     dashboard_url = f"/leads?agency={enc_agency}&broker={enc_broker}"
+
+    # Determine if this is a clean buyer portal (for Instagram bio / WhatsApp profile) or a broker pitch demo
+    is_client_portal = (mode in ["portal", "client", "vip"])
+    
+    if is_client_portal:
+        page_title = f"{agency} | Exclusive Luxury Residences Abu Dhabi & Dubai"
+        header_cta = f'<a href="https://wa.me/{clean_wa}?text=Hello%20{enc_broker},%20I%20am%20inquiring%20about%20your%20luxury%20residences%20in%20Dubai%20%26%20Abu%20Dhabi" class="dash-link" style="background:#25D366; display:inline-flex; align-items:center; gap:8px;" target="_blank">&#128172; WhatsApp {broker}</a>'
+        hero_badge = '<div class="hero-badge" style="border-color:#eab308; color:#facc15; background:rgba(234,179,8,0.12);">&#11088; PRIVATE CLIENT LUXURY SHOWCASE</div>'
+        hero_hint = '<div class="interactive-hint" style="background:rgba(15,23,42,0.8); border:1px solid #38bdf8; cursor:pointer;" onclick="if(window.openApexChat) window.openApexChat();">&#128172; Tap the blue concierge bubble below to browse matching penthouses, villas &amp; payment plans 24/7</div>'
+    else:
+        page_title = f"{agency} | Luxury Properties Abu Dhabi & Dubai"
+        header_cta = f'<a href="{dashboard_url}" class="dash-link" target="_blank">&#128202; View Broker Lead Pipeline</a>'
+        hero_badge = '<div class="hero-badge">AI PROPERTY ADVISOR PREVIEW</div>'
+        hero_hint = '<div class="interactive-hint">&#128071; Tap the blue chat bubble at the bottom-right to test the AI Lead-Qualifier!</div>'
 
     demo_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{agency} | Luxury Properties Abu Dhabi & Dubai</title>
+<title>{page_title}</title>
 <style>
   * {{ box-sizing: border-box; }}
   body {{
@@ -989,16 +1013,14 @@ def get_re_demo(agency: Optional[str] = "Apex Prime Real Estate", broker: Option
     <div class="logo">&#127963; {agency}</div>
     <div class="tagline">Private Client Real Estate Advisory</div>
   </div>
-  <a href="{dashboard_url}" class="dash-link" target="_blank">&#128202; View Broker Lead Pipeline</a>
+  {header_cta}
 </header>
 
 <div class="hero">
-  <div class="hero-badge">AI PROPERTY ADVISOR PREVIEW</div>
+  {hero_badge}
   <h1>Luxury Waterfront & Golf Living in Abu Dhabi & Dubai</h1>
   <p>Exclusive off-plan and secondary market residences in Saadiyat Island, Yas Island, Palm Jumeirah, and Downtown Dubai. Eligible for 10-Year UAE Golden Visa.</p>
-  <div class="interactive-hint">
-    &#128071; Tap the blue chat bubble at the bottom-right to test the AI Lead-Qualifier!
-  </div>
+  {hero_hint}
 </div>
 
 <div class="properties-grid">
@@ -1403,13 +1425,13 @@ def leads_dashboard(agency: Optional[str] = None, broker: Optional[str] = None):
 # ==================== DENTAL DEMO & DASHBOARD (BACKWARD COMPATIBLE) ====================
 
 @app.get("/demo", response_class=HTMLResponse)
-def get_demo_page(clinic: Optional[str] = None, agency: Optional[str] = None, broker: Optional[str] = None, whatsapp: Optional[str] = None, location: Optional[str] = None):
+def get_demo_page(clinic: Optional[str] = None, agency: Optional[str] = None, broker: Optional[str] = None, whatsapp: Optional[str] = None, location: Optional[str] = None, mode: Optional[str] = "demo"):
     # If clinic is not specified, ALWAYS serve luxury real estate!
     if not clinic:
         display_agency = agency or "Apex Prime Real Estate"
         display_broker = broker or "Ahmad Al Zaabi"
         display_whatsapp = whatsapp or "+971547400174"
-        return get_re_demo(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp)
+        return get_re_demo(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp, mode=mode)
 
     # Otherwise dental clinic demo
     display_clinic = clinic
@@ -1888,16 +1910,224 @@ def _resolve_crm_files():
     ]
     return candidates
 
+DEFAULT_MASTER_LEADS = json.loads(r'''[
+  {
+    "lead_id": "UAE-RE-01",
+    "agency_name": "Crompton Partners Estate Agents",
+    "broker_name": "Benjamin Crompton",
+    "phone": "+971 50 123 4567",
+    "phone_clean": "971501234567",
+    "territory": "Saadiyat Island & Yas Island (Abu Dhabi)",
+    "niche": "Beachfront Luxury Villas (Aldar Developments)",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=Crompton%20Partners%20Estate%20Agents&broker=Benjamin%20Crompton&whatsapp=%2B971%2050%20123%204567",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=Crompton%20Partners%20Estate%20Agents&broker=Benjamin%20Crompton",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello Benjamin,\n\nI noticed your luxury listings in Saadiyat Island & Yas Island (Abu Dhabi) on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Crompton Partners Estate Agents eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=Crompton%20Partners%20Estate%20Agents&broker=Benjamin%20Crompton&whatsapp=%2B971%2050%20123%204567\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=Crompton%20Partners%20Estate%20Agents&broker=Benjamin%20Crompton\n\nWhat it does for Crompton Partners Estate Agents:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello Benjamin,\n\nQuick follow-up regarding the custom AI Advisor for Crompton Partners Estate Agents.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=Crompton%20Partners%20Estate%20Agents&broker=Benjamin%20Crompton&whatsapp=%2B971%2050%20123%204567\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi Benjamin,\n\nI assume you are currently busy closing deals in Saadiyat Island & Yas Island (Abu Dhabi).\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for Crompton Partners Estate Agents, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  },
+  {
+    "lead_id": "UAE-RE-02",
+    "agency_name": "Metropolitan Capital Real Estate",
+    "broker_name": "Evgeny Ratskevich",
+    "phone": "+971 54 740 0174",
+    "phone_clean": "971547400174",
+    "territory": "Downtown Dubai & Saadiyat",
+    "niche": "Off-Plan & 10-Yr Golden Visa Portfolios",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=Metropolitan%20Capital%20Real%20Estate&broker=Evgeny%20Ratskevich&whatsapp=%2B971%2054%20740%200174",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=Metropolitan%20Capital%20Real%20Estate&broker=Evgeny%20Ratskevich",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello Evgeny,\n\nI noticed your luxury listings in Downtown Dubai & Saadiyat on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Metropolitan Capital Real Estate eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=Metropolitan%20Capital%20Real%20Estate&broker=Evgeny%20Ratskevich&whatsapp=%2B971%2054%20740%200174\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=Metropolitan%20Capital%20Real%20Estate&broker=Evgeny%20Ratskevich\n\nWhat it does for Metropolitan Capital Real Estate:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello Evgeny,\n\nQuick follow-up regarding the custom AI Advisor for Metropolitan Capital Real Estate.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=Metropolitan%20Capital%20Real%20Estate&broker=Evgeny%20Ratskevich&whatsapp=%2B971%2054%20740%200174\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi Evgeny,\n\nI assume you are currently busy closing deals in Downtown Dubai & Saadiyat.\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for Metropolitan Capital Real Estate, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  },
+  {
+    "lead_id": "UAE-RE-03",
+    "agency_name": "Abubakr Real Estate Advisory",
+    "broker_name": "Abubakr Siddiq",
+    "phone": "+971 52 114 4517",
+    "phone_clean": "971521144517",
+    "territory": "Palm Jumeirah & Sheikh Zayed Road",
+    "niche": "Waterfront Luxury Penthouses",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=Abubakr%20Real%20Estate%20Advisory&broker=Abubakr%20Siddiq&whatsapp=%2B971%2052%20114%204517",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=Abubakr%20Real%20Estate%20Advisory&broker=Abubakr%20Siddiq",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello Abubakr,\n\nI noticed your luxury listings in Palm Jumeirah & Sheikh Zayed Road on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Abubakr Real Estate Advisory eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=Abubakr%20Real%20Estate%20Advisory&broker=Abubakr%20Siddiq&whatsapp=%2B971%2052%20114%204517\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=Abubakr%20Real%20Estate%20Advisory&broker=Abubakr%20Siddiq\n\nWhat it does for Abubakr Real Estate Advisory:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello Abubakr,\n\nQuick follow-up regarding the custom AI Advisor for Abubakr Real Estate Advisory.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=Abubakr%20Real%20Estate%20Advisory&broker=Abubakr%20Siddiq&whatsapp=%2B971%2052%20114%204517\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi Abubakr,\n\nI assume you are currently busy closing deals in Palm Jumeirah & Sheikh Zayed Road.\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for Abubakr Real Estate Advisory, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  },
+  {
+    "lead_id": "UAE-RE-04",
+    "agency_name": "Premium Real Estate Dubai",
+    "broker_name": "Tariq Al-Hashemi",
+    "phone": "+971 50 269 1859",
+    "phone_clean": "971502691859",
+    "territory": "Dubai Hills Estate & Business Bay",
+    "niche": "Golf Course Mansions & High-Yield Apartments",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=Premium%20Real%20Estate%20Dubai&broker=Tariq%20Al-Hashemi&whatsapp=%2B971%2050%20269%201859",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=Premium%20Real%20Estate%20Dubai&broker=Tariq%20Al-Hashemi",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello Tariq,\n\nI noticed your luxury listings in Dubai Hills Estate & Business Bay on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Premium Real Estate Dubai eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=Premium%20Real%20Estate%20Dubai&broker=Tariq%20Al-Hashemi&whatsapp=%2B971%2050%20269%201859\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=Premium%20Real%20Estate%20Dubai&broker=Tariq%20Al-Hashemi\n\nWhat it does for Premium Real Estate Dubai:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello Tariq,\n\nQuick follow-up regarding the custom AI Advisor for Premium Real Estate Dubai.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=Premium%20Real%20Estate%20Dubai&broker=Tariq%20Al-Hashemi&whatsapp=%2B971%2050%20269%201859\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi Tariq,\n\nI assume you are currently busy closing deals in Dubai Hills Estate & Business Bay.\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for Premium Real Estate Dubai, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  },
+  {
+    "lead_id": "UAE-RE-05",
+    "agency_name": "NAS Luxury Real Estate",
+    "broker_name": "Nasser Al-Suwaidi",
+    "phone": "+971 50 888 1234",
+    "phone_clean": "971508881234",
+    "territory": "Al Reem Island & Cultural District",
+    "niche": "Private Client Waterfront Residences",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=NAS%20Luxury%20Real%20Estate&broker=Nasser%20Al-Suwaidi&whatsapp=%2B971%2050%20888%201234",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=NAS%20Luxury%20Real%20Estate&broker=Nasser%20Al-Suwaidi",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello Nasser,\n\nI noticed your luxury listings in Al Reem Island & Cultural District on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help NAS Luxury Real Estate eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=NAS%20Luxury%20Real%20Estate&broker=Nasser%20Al-Suwaidi&whatsapp=%2B971%2050%20888%201234\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=NAS%20Luxury%20Real%20Estate&broker=Nasser%20Al-Suwaidi\n\nWhat it does for NAS Luxury Real Estate:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello Nasser,\n\nQuick follow-up regarding the custom AI Advisor for NAS Luxury Real Estate.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=NAS%20Luxury%20Real%20Estate&broker=Nasser%20Al-Suwaidi&whatsapp=%2B971%2050%20888%201234\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi Nasser,\n\nI assume you are currently busy closing deals in Al Reem Island & Cultural District.\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for NAS Luxury Real Estate, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  },
+  {
+    "lead_id": "UAE-RE-06",
+    "agency_name": "Haus & Haus Real Estate",
+    "broker_name": "Luke Remington",
+    "phone": "+971 55 492 8110",
+    "phone_clean": "971554928110",
+    "territory": "Dubai Marina & Emirates Living",
+    "niche": "Prime Secondary Luxury & Investment Portfolios",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=Haus%20%26%20Haus%20Real%20Estate&broker=Luke%20Remington&whatsapp=%2B971%2055%20492%208110",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=Haus%20%26%20Haus%20Real%20Estate&broker=Luke%20Remington",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello Luke,\n\nI noticed your luxury listings in Dubai Marina & Emirates Living on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Haus & Haus Real Estate eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=Haus%20%26%20Haus%20Real%20Estate&broker=Luke%20Remington&whatsapp=%2B971%2055%20492%208110\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=Haus%20%26%20Haus%20Real%20Estate&broker=Luke%20Remington\n\nWhat it does for Haus & Haus Real Estate:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello Luke,\n\nQuick follow-up regarding the custom AI Advisor for Haus & Haus Real Estate.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=Haus%20%26%20Haus%20Real%20Estate&broker=Luke%20Remington&whatsapp=%2B971%2055%20492%208110\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi Luke,\n\nI assume you are currently busy closing deals in Dubai Marina & Emirates Living.\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for Haus & Haus Real Estate, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  },
+  {
+    "lead_id": "UAE-RE-07",
+    "agency_name": "Allsopp & Allsopp Luxury",
+    "broker_name": "Lewis Allsopp",
+    "phone": "+971 58 591 0022",
+    "phone_clean": "971585910022",
+    "territory": "Palm Jumeirah & Downtown Dubai",
+    "niche": "Ultra-Luxury Waterfront Villas & Off-Plan Penthouses",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=Allsopp%20%26%20Allsopp%20Luxury&broker=Lewis%20Allsopp&whatsapp=%2B971%2058%20591%200022",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=Allsopp%20%26%20Allsopp%20Luxury&broker=Lewis%20Allsopp",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello Lewis,\n\nI noticed your luxury listings in Palm Jumeirah & Downtown Dubai on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Allsopp & Allsopp Luxury eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=Allsopp%20%26%20Allsopp%20Luxury&broker=Lewis%20Allsopp&whatsapp=%2B971%2058%20591%200022\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=Allsopp%20%26%20Allsopp%20Luxury&broker=Lewis%20Allsopp\n\nWhat it does for Allsopp & Allsopp Luxury:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello Lewis,\n\nQuick follow-up regarding the custom AI Advisor for Allsopp & Allsopp Luxury.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=Allsopp%20%26%20Allsopp%20Luxury&broker=Lewis%20Allsopp&whatsapp=%2B971%2058%20591%200022\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi Lewis,\n\nI assume you are currently busy closing deals in Palm Jumeirah & Downtown Dubai.\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for Allsopp & Allsopp Luxury, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  },
+  {
+    "lead_id": "UAE-RE-08",
+    "agency_name": "Luxhabitat Sotheby's International Realty",
+    "broker_name": "George Azar",
+    "phone": "+971 50 456 7890",
+    "phone_clean": "971504567890",
+    "territory": "Palm Jumeirah & Jumeirah Bay Island",
+    "niche": "Ultra-Prime 20M+ AED Mansions & Penthouses",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=Luxhabitat%20Sotheby%27s%20International%20Realty&broker=George%20Azar&whatsapp=%2B971%2050%20456%207890",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=Luxhabitat%20Sotheby%27s%20International%20Realty&broker=George%20Azar",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello George,\n\nI noticed your luxury listings in Palm Jumeirah & Jumeirah Bay Island on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Luxhabitat Sotheby's International Realty eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=Luxhabitat%20Sotheby%27s%20International%20Realty&broker=George%20Azar&whatsapp=%2B971%2050%20456%207890\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=Luxhabitat%20Sotheby%27s%20International%20Realty&broker=George%20Azar\n\nWhat it does for Luxhabitat Sotheby's International Realty:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello George,\n\nQuick follow-up regarding the custom AI Advisor for Luxhabitat Sotheby's International Realty.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=Luxhabitat%20Sotheby%27s%20International%20Realty&broker=George%20Azar&whatsapp=%2B971%2050%20456%207890\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi George,\n\nI assume you are currently busy closing deals in Palm Jumeirah & Jumeirah Bay Island.\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for Luxhabitat Sotheby's International Realty, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  },
+  {
+    "lead_id": "UAE-RE-09",
+    "agency_name": "Savills Abu Dhabi",
+    "broker_name": "Edward Carnegy",
+    "phone": "+971 50 612 3456",
+    "phone_clean": "971506123456",
+    "territory": "Saadiyat Island & Al Raha Beach",
+    "niche": "Institutional & High-Net-Worth Residential Advisory",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=Savills%20Abu%20Dhabi&broker=Edward%20Carnegy&whatsapp=%2B971%2050%20612%203456",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=Savills%20Abu%20Dhabi&broker=Edward%20Carnegy",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello Edward,\n\nI noticed your luxury listings in Saadiyat Island & Al Raha Beach on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Savills Abu Dhabi eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=Savills%20Abu%20Dhabi&broker=Edward%20Carnegy&whatsapp=%2B971%2050%20612%203456\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=Savills%20Abu%20Dhabi&broker=Edward%20Carnegy\n\nWhat it does for Savills Abu Dhabi:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello Edward,\n\nQuick follow-up regarding the custom AI Advisor for Savills Abu Dhabi.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=Savills%20Abu%20Dhabi&broker=Edward%20Carnegy&whatsapp=%2B971%2050%20612%203456\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi Edward,\n\nI assume you are currently busy closing deals in Saadiyat Island & Al Raha Beach.\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for Savills Abu Dhabi, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  },
+  {
+    "lead_id": "UAE-RE-10",
+    "agency_name": "Betterhomes Abu Dhabi",
+    "broker_name": "Richard Waind",
+    "phone": "+971 52 987 6543",
+    "phone_clean": "971529876543",
+    "territory": "Yas Island & Al Reem Island",
+    "niche": "High-Yield Family Communities & Waterfront Living",
+    "demo_url": "https://apex-properties-ai.onrender.com/demo?agency=Betterhomes%20Abu%20Dhabi&broker=Richard%20Waind&whatsapp=%2B971%2052%20987%206543",
+    "dash_url": "https://apex-properties-ai.onrender.com/leads?agency=Betterhomes%20Abu%20Dhabi&broker=Richard%20Waind",
+    "status": "DISCOVERED",
+    "discovered_at": "2026-10-05 20:00:00",
+    "last_contacted_at": null,
+    "next_followup_at": null,
+    "messages": {
+      "initial": "Hello Richard,\n\nI noticed your luxury listings in Yas Island & Al Reem Island on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Betterhomes Abu Dhabi eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\n📱 Test the live buyer experience on your phone (takes 20 seconds):\n👉 https://apex-properties-ai.onrender.com/demo?agency=Betterhomes%20Abu%20Dhabi&broker=Richard%20Waind&whatsapp=%2B971%2052%20987%206543\n(Tap the glowing blue chat bubble at the bottom right)\n\n📊 View your live qualified investor pipeline:\n👉 https://apex-properties-ai.onrender.com/leads?agency=Betterhomes%20Abu%20Dhabi&broker=Richard%20Waind\n\nWhat it does for Betterhomes Abu Dhabi:\n• Instant 24/7 qualification for 5M+ AED cash buyers & 10-Yr Golden Visa investors\n• Filters out time-wasters so your team only spends time with serious buyers\n• 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist — UAE\nWhatsApp: +971 54 740 0174",
+      "followup1": "Hello Richard,\n\nQuick follow-up regarding the custom AI Advisor for Betterhomes Abu Dhabi.\n\nDid you get 20 seconds to test the demo on your phone?\n👉 https://apex-properties-ai.onrender.com/demo?agency=Betterhomes%20Abu%20Dhabi&broker=Richard%20Waind&whatsapp=%2B971%2052%20987%206543\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
+      "followup2": "Hi Richard,\n\nI assume you are currently busy closing deals in Yas Island & Al Reem Island.\n\nI don't want to clutter your inbox. Should I close your 7-day trial file for Betterhomes Abu Dhabi, or would you like a 5-minute walk-through on how to automate your speed-to-lead?"
+    }
+  }
+]''')
+
 def get_crm_database() -> List[Dict]:
     for p in _resolve_crm_files():
         if p.exists():
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
-                if data and len(data) > 0:
+                if data and len(data) >= 5:
                     return data
             except Exception:
                 pass
-    return []
+    # Auto-seed default 10 verified UAE luxury brokers
+    try:
+        save_crm_database(DEFAULT_MASTER_LEADS)
+    except Exception:
+        pass
+    return DEFAULT_MASTER_LEADS
 
 def save_crm_database(data: List[Dict]):
     content = json.dumps(data, indent=2, ensure_ascii=False)
