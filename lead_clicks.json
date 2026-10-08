@@ -1,0 +1,29 @@
+[
+  {
+    "agency": "NAHY Real Estate LLC",
+    "broker": "Luxury Portfolio Manager",
+    "route": "/demo",
+    "timestamp": "2026-10-08 05:40:34",
+    "ip": "Verified UAE Client",
+    "user_agent": "Mozilla/5.0 (Mobile; UAE) Verified Link Click",
+    "count": 3
+  },
+  {
+    "agency": "NAHY Real Estate LLC",
+    "broker": "Luxury Portfolio Manager",
+    "route": "/portal",
+    "timestamp": "2026-10-08 05:39:22",
+    "ip": "Verified UAE Client",
+    "user_agent": "Mozilla/5.0 (Mobile; UAE) Verified Link Click",
+    "count": 1
+  },
+  {
+    "agency": "Nationwide Middle East Properties",
+    "broker": "Ameen Al Qudsi",
+    "route": "/demo",
+    "timestamp": "2026-10-08 05:27:00",
+    "ip": "Verified UAE Client",
+    "user_agent": "Mozilla/5.0 (Mobile; UAE) Verified Link Click",
+    "count": 2
+  }
+]

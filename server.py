@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional, Any
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
@@ -1234,24 +1234,124 @@ setTimeout(function() {{
 </body>
 </html>"""
 
+CLICK_LOG_FILES = [
+    Path(__file__).resolve().parent / "lead_clicks.json",
+    Path(__file__).resolve().parent.parent / "outputs" / "lead_clicks.json"
+]
+
+def record_remote_click(
+    agency: Optional[str] = None,
+    broker: Optional[str] = None,
+    route: str = "/demo",
+    client_ip: str = "",
+    user_agent: str = ""
+):
+    """
+    Safely logs incoming clicks on Render or local server,
+    and automatically upgrades the matched lead status to CLICKED in CRM.
+    """
+    if not agency:
+        return
+    clean_agency = str(agency).strip()
+    if clean_agency.lower() in ["apex prime real estate", "null", "undefined", ""]:
+        return
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    click_entry = {
+        "agency": clean_agency,
+        "broker": str(broker or "").strip(),
+        "route": route,
+        "timestamp": now_str,
+        "ip": client_ip,
+        "user_agent": user_agent[:120] if user_agent else "",
+        "count": 1
+    }
+
+    # 1. Append to clicks file
+    for p in CLICK_LOG_FILES:
+        try:
+            clicks = []
+            if p.exists():
+                try:
+                    clicks = json.loads(p.read_text(encoding="utf-8"))
+                except Exception:
+                    clicks = []
+            clicks.insert(0, click_entry)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(clicks[:500], indent=2, ensure_ascii=False), encoding="utf-8")
+            break
+        except Exception as e:
+            logger.warning(f"Failed to write click log to {p}: {e}")
+
+    # 2. Update CRM database entry
+    try:
+        crm = get_crm_database()
+        updated = False
+        for lead in crm:
+            lead_ag = (lead.get("agency_name") or "").strip().lower()
+            if clean_agency.lower() in lead_ag or lead_ag in clean_agency.lower():
+                lead["status"] = "CLICKED"
+                lead["last_clicked_at"] = now_str
+                lead["click_count"] = (lead.get("click_count") or 0) + 1
+                routes = lead.get("clicked_routes") or []
+                if route not in routes:
+                    routes.append(route)
+                lead["clicked_routes"] = routes
+                updated = True
+        if updated:
+            save_crm_database(crm)
+    except Exception as e:
+        logger.warning(f"Failed to auto-update CRM lead status on click: {e}")
+
 @app.get("/portal", response_class=HTMLResponse)
 @app.get("/vip", response_class=HTMLResponse)
 @app.get("/showcase", response_class=HTMLResponse)
 def get_client_portal(
+    request: Request,
     agency: Optional[str] = "Apex Prime Real Estate",
     broker: Optional[str] = "Ahmad Al Zaabi",
     whatsapp: Optional[str] = "+971547400174"
 ):
-    return HTMLResponse(content=build_client_portal_html(agency=agency, broker=broker, whatsapp=whatsapp), media_type="text/html; charset=utf-8")
+    client_ip = request.client.host if request.client else ""
+    ua = request.headers.get("user-agent", "")
+    try:
+        record_remote_click(agency=agency, broker=broker, route="/portal", client_ip=client_ip, user_agent=ua)
+    except Exception as ex:
+        logger.warning(f"Error logging portal click: {ex}")
+
+    try:
+        display_agency = str(agency or "Apex Prime Real Estate").strip()
+        display_broker = str(broker or "Ahmad Al Zaabi").strip()
+        display_whatsapp = str(whatsapp or "+971547400174").strip()
+        return HTMLResponse(content=build_client_portal_html(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp), media_type="text/html; charset=utf-8")
+    except Exception as e:
+        logger.error(f"Error in get_client_portal: {e}")
+        return HTMLResponse(content=build_client_portal_html(agency="Apex Prime Real Estate", broker="Ahmad Al Zaabi", whatsapp="+971547400174"), media_type="text/html; charset=utf-8")
 
 @app.get("/re/demo", response_class=HTMLResponse)
 @app.get("/realestate", response_class=HTMLResponse)
 def get_re_demo_page(
+    request: Request,
     agency: Optional[str] = "Apex Prime Real Estate",
     broker: Optional[str] = "Ahmad Al Zaabi",
     whatsapp: Optional[str] = "+971547400174"
 ):
-    return HTMLResponse(content=build_broker_demo_html(agency=agency, broker=broker, whatsapp=whatsapp), media_type="text/html; charset=utf-8")
+    client_ip = request.client.host if request.client else ""
+    ua = request.headers.get("user-agent", "")
+    try:
+        record_remote_click(agency=agency, broker=broker, route="/demo", client_ip=client_ip, user_agent=ua)
+    except Exception as ex:
+        logger.warning(f"Error logging re demo click: {ex}")
+
+    try:
+        display_agency = str(agency or "Apex Prime Real Estate").strip()
+        display_broker = str(broker or "Ahmad Al Zaabi").strip()
+        display_whatsapp = str(whatsapp or "+971547400174").strip()
+        return HTMLResponse(content=build_broker_demo_html(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp), media_type="text/html; charset=utf-8")
+    except Exception as e:
+        logger.error(f"Error in get_re_demo_page: {e}")
+        return HTMLResponse(content=build_broker_demo_html(agency="Apex Prime Real Estate", broker="Ahmad Al Zaabi", whatsapp="+971547400174"), media_type="text/html; charset=utf-8")
+
 
 
 @app.get("/api/leads")
@@ -1612,13 +1712,33 @@ def leads_dashboard(agency: Optional[str] = None, broker: Optional[str] = None):
 # ==================== DENTAL DEMO & DASHBOARD (BACKWARD COMPATIBLE) ====================
 
 @app.get("/demo", response_class=HTMLResponse)
-def get_demo_page(clinic: Optional[str] = None, agency: Optional[str] = None, broker: Optional[str] = None, whatsapp: Optional[str] = None, location: Optional[str] = None, mode: Optional[str] = "demo"):
+def get_demo_page(
+    request: Request,
+    clinic: Optional[str] = None, 
+    agency: Optional[str] = None, 
+    broker: Optional[str] = None, 
+    whatsapp: Optional[str] = None, 
+    location: Optional[str] = None, 
+    mode: Optional[str] = "demo"
+):
+    client_ip = request.client.host if request.client else ""
+    ua = request.headers.get("user-agent", "")
+
     # If clinic is not specified, ALWAYS serve luxury real estate!
     if not clinic:
-        display_agency = agency or "Apex Prime Real Estate"
-        display_broker = broker or "Ahmad Al Zaabi"
-        display_whatsapp = whatsapp or "+971547400174"
-        return HTMLResponse(content=build_broker_demo_html(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp), media_type="text/html; charset=utf-8")
+        try:
+            record_remote_click(agency=agency, broker=broker, route="/demo", client_ip=client_ip, user_agent=ua)
+        except Exception as ex:
+            logger.warning(f"Error logging demo click: {ex}")
+
+        try:
+            display_agency = str(agency or "Apex Prime Real Estate").strip()
+            display_broker = str(broker or "Ahmad Al Zaabi").strip()
+            display_whatsapp = str(whatsapp or "+971547400174").strip()
+            return HTMLResponse(content=build_broker_demo_html(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp), media_type="text/html; charset=utf-8")
+        except Exception as e:
+            logger.error(f"Error generating broker demo HTML: {e}")
+            return HTMLResponse(content=build_broker_demo_html(agency="Apex Prime Real Estate", broker="Ahmad Al Zaabi", whatsapp="+971547400174"), media_type="text/html; charset=utf-8")
 
     # Otherwise dental clinic demo
     display_clinic = clinic
@@ -2677,12 +2797,93 @@ def api_send_followup(payload: Dict[str, Any] = Body(...)):
     agent_daemon.log_activity(f"📤 Dispatched {stage} email to {lead_id} ({res.get('status')})", level="EMAIL")
     return res
 
+def fetch_and_sync_remote_clicks() -> Dict[str, Any]:
+    """Fetches real-time clicks from Render and updates local/remote CRM leads."""
+    import urllib.request
+    remote_url = "https://apex-properties-ai.onrender.com/api/agent/remote-clicks"
+    synced = []
+    try:
+        req = urllib.request.Request(remote_url, headers={"User-Agent": "AthulAI-LocalSync/1.0", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=6) as response:
+            if response.status == 200:
+                data = json.loads(response.read().decode("utf-8"))
+                clicks = data.get("clicks", [])
+                crm_leads = agent_daemon.agent.get_crm_leads() if agent_daemon else get_crm_database()
+                updated = False
+                for c in clicks:
+                    c_ag = str(c.get("agency") or "").strip().lower()
+                    c_time = c.get("timestamp")
+                    c_route = c.get("route", "/demo")
+                    if not c_ag or c_ag in ["apex prime real estate", "null", "undefined"]:
+                        continue
+                    for lead in crm_leads:
+                        l_ag = str(lead.get("agency_name") or "").strip().lower()
+                        if c_ag in l_ag or l_ag in c_ag:
+                            if lead.get("status") != "WON":
+                                prev = lead.get("status")
+                                lead["status"] = "CLICKED"
+                                lead["last_clicked_at"] = c_time
+                                lead["click_count"] = max(lead.get("click_count") or 0, c.get("count", 1))
+                                routes = lead.get("clicked_routes") or []
+                                if c_route not in routes:
+                                    routes.append(c_route)
+                                lead["clicked_routes"] = routes
+                                updated = True
+                                if lead.get("agency_name") not in synced:
+                                    synced.append(lead.get("agency_name"))
+                                if prev != "CLICKED" and agent_daemon:
+                                    agent_daemon.log_activity(
+                                        f"🎯 Client verified active click! {lead.get('agency_name')} ({c_route}) -> Status upgraded to CLICKED (Hot Lead).",
+                                        level="CLICK"
+                                    )
+                if updated:
+                    if agent_daemon:
+                        agent_daemon.agent._save_crm(crm_leads)
+                    save_crm_database(crm_leads)
+    except Exception as e:
+        logger.warning(f"Remote click sync note: {e}")
+    return {"success": True, "synced_count": len(synced), "synced_agencies": synced}
+
+@app.get("/api/agent/remote-clicks")
+def get_remote_clicks():
+    clicks = []
+    for p in CLICK_LOG_FILES:
+        if p.exists():
+            try:
+                clicks = json.loads(p.read_text(encoding="utf-8"))
+                break
+            except Exception:
+                pass
+    return {
+        "success": True,
+        "total_clicks": len(clicks),
+        "clicks": clicks[:100]
+    }
+
+@app.post("/api/agent/record-click")
+async def api_record_click(request: Request):
+    try:
+        body = await request.json()
+        agency = body.get("agency")
+        broker = body.get("broker")
+        route = body.get("route", "/demo")
+        record_remote_click(agency=agency, broker=broker, route=route, client_ip=request.client.host if request.client else "", user_agent=request.headers.get("user-agent", ""))
+        return {"success": True, "message": f"Click recorded for {agency}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/agent/sync-clicks")
+@app.post("/api/agent/sync-clicks")
+def api_sync_clicks():
+    return fetch_and_sync_remote_clicks()
+
 @app.get("/agent", response_class=HTMLResponse)
 @app.get("/cockpit", response_class=HTMLResponse)
 def virtual_agent_cockpit():
     leads = agent_daemon.agent.get_crm_leads() if agent_daemon else get_crm_database()
     total_leads = len(leads)
     won_leads = sum(1 for l in leads if l.get("status") == "WON")
+    clicked_leads = sum(1 for l in leads if l.get("status") == "CLICKED")
     contacted_leads = sum(1 for l in leads if l.get("status") in ["CONTACTED", "FOLLOWUP_1_SENT", "FOLLOWUP_2_SENT", "REPLIED"])
     pipeline_val = (total_leads - won_leads) * 2500
     won_val = won_leads * 2500
@@ -2693,7 +2894,7 @@ def virtual_agent_cockpit():
         agency = l.get("agency_name", "UAE Agency")
         broker = l.get("broker_name", "Senior Advisor")
         phone = l.get("phone", "+971547400174")
-        email = l.get("email") or agent_daemon.agent.get_or_assign_lead_email(l) if agent_daemon else "info@agency.ae"
+        email = l.get("email") or (agent_daemon.agent.get_or_assign_lead_email(l) if agent_daemon else "info@agency.ae")
         territory = l.get("territory") or l.get("area") or "Dubai & Abu Dhabi"
         score = l.get("ml_score", 75)
         angle = l.get("optimal_pitch_angle", "speed_to_lead")
@@ -2710,6 +2911,7 @@ def virtual_agent_cockpit():
         st_colors = {
             "DISCOVERED": ("#38bdf8", "rgba(56,189,248,0.15)"),
             "CONTACTED": ("#fbbf24", "rgba(251,191,36,0.15)"),
+            "CLICKED": ("#c084fc", "rgba(192,132,252,0.25)"),
             "FOLLOWUP_1_DUE": ("#f97316", "rgba(249,115,22,0.2)"),
             "FOLLOWUP_1_SENT": ("#fbbf24", "rgba(251,191,36,0.15)"),
             "FOLLOWUP_2_DUE": ("#ef4444", "rgba(239,68,68,0.2)"),
@@ -2717,17 +2919,20 @@ def virtual_agent_cockpit():
             "WON": ("#4ade80", "rgba(74,222,128,0.2)")
         }
         badge_fg, badge_bg = st_colors.get(status, ("#94a3b8", "rgba(148,163,184,0.15)"))
+        status_label = f"🔥 CLICKED ({l.get('click_count', 1)}x)" if status == "CLICKED" else status
+        click_time_html = f'<div style="font-size:11px; color:#c084fc; margin-top:4px; font-weight:700;">🕒 Clicked: {l.get("last_clicked_at")}</div>' if status == "CLICKED" and l.get("last_clicked_at") else ''
 
         cards_html += f"""
-        <div class="lead-card" id="card-{lid}">
+        <div class="lead-card" id="card-{lid}" style="{'border-color:#a855f7; box-shadow:0 0 15px rgba(168,85,247,0.15);' if status == 'CLICKED' else ''}">
           <div class="lead-header">
             <div>
               <div class="lead-agency">{agency}</div>
               <div class="lead-broker">&#128100; {broker} &bull; <span style="color:#94a3b8;">{territory}</span></div>
             </div>
             <div style="text-align:right;">
-              <span class="status-pill" style="color:{badge_fg}; background:{badge_bg}; border:1px solid {badge_fg};">{status}</span>
+              <span class="status-pill" style="color:{badge_fg}; background:{badge_bg}; border:1px solid {badge_fg};">{status_label}</span>
               <div class="ml-badge">&#129504; ML Score: <strong>{score}/100</strong></div>
+              {click_time_html}
             </div>
           </div>
 
@@ -3153,15 +3358,32 @@ async function markWon(leadId) {{
   }}
 }}
 
-async function markContacted(leadId) {{
-  try {{
-    await fetch('/api/crm/update-status', {{
+async function markContacted(leadId) {
+  try {
+    await fetch('/api/crm/update-status', {
       method: 'POST',
-      headers: {{ 'content-type': 'application/json' }},
-      body: JSON.stringify({{ lead_id: leadId, status: 'CONTACTED' }})
-    }});
-  }} catch (e) {{}}
-}}
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lead_id: leadId, status: 'CONTACTED' })
+    });
+  } catch (e) {}
+}
+
+async function syncClicks() {
+  showToast('🔄 Syncing live client clicks from Render...');
+  try {
+    const res = await fetch('/api/agent/sync-clicks', { method: 'POST' });
+    const d = await res.json();
+    if (d.synced_count > 0) {
+      showToast('🔥 Synced ' + d.synced_count + ' active client clicks! Reloading...');
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showToast('✅ Client engagement verified and up to date.');
+      setTimeout(() => location.reload(), 1200);
+    }
+  } catch (e) {
+    showToast('Sync check finished');
+  }
+}
 </script>
 </head>
 <body>
@@ -3178,6 +3400,7 @@ async function markContacted(leadId) {{
   </div>
 
   <div class="top-controls">
+    <button onclick="syncClicks()" class="btn-toolbar" style="border-color:#a855f7; color:#c084fc; font-weight:800;">🔄 Sync Clicks</button>
     <button id="autopilot-toggle-btn" onclick="toggleAutopilot()" class="btn-toolbar">&#9208;&#65039; Pause Autopilot</button>
     <button onclick="triggerHunt()" class="btn-toolbar">&#128269; Auto-Hunt Brokers</button>
     <button onclick="triggerCycle()" class="btn-toolbar btn-primary">&#9889; Run Cycle Now</button>
@@ -3189,6 +3412,10 @@ async function markContacted(leadId) {{
     <div class="kpi-card">
       <div class="kpi-label">Active Prospects in CRM</div>
       <div class="kpi-value">{total_leads}</div>
+    </div>
+    <div class="kpi-card" style="border-color:#a855f7; background:rgba(168,85,247,0.08);">
+      <div class="kpi-label" style="color:#c084fc;">🔥 Verified Client Clicks</div>
+      <div class="kpi-value" style="color:#c084fc;">{clicked_leads} <span style="font-size:14px; font-weight:600; color:#e9d5ff;">Hot Leads</span></div>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">In Active Outreach</div>
@@ -3233,6 +3460,16 @@ async function markContacted(leadId) {{
 
 <script>
 refreshActivity();
+setInterval(refreshActivity, 5000);
+setInterval(async () => {
+  try {
+    const r = await fetch('/api/agent/sync-clicks', { method: 'POST' });
+    const d = await r.json();
+    if (d && d.synced_count > 0) {
+      location.reload();
+    }
+  } catch (e) {}
+}, 20000);
 </script>
 </body>
 </html>"""
