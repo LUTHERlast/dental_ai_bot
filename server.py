@@ -3358,32 +3358,32 @@ async function markWon(leadId) {{
   }}
 }}
 
-async function markContacted(leadId) {
-  try {
-    await fetch('/api/crm/update-status', {
+async function markContacted(leadId) {{
+  try {{
+    await fetch('/api/crm/update-status', {{
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lead_id: leadId, status: 'CONTACTED' })
-    });
-  } catch (e) {}
-}
+      headers: {{ 'content-type': 'application/json' }},
+      body: JSON.stringify({{ lead_id: leadId, status: 'CONTACTED' }})
+    }});
+  }} catch (e) {{}}
+}}
 
-async function syncClicks() {
+async function syncClicks() {{
   showToast('🔄 Syncing live client clicks from Render...');
-  try {
-    const res = await fetch('/api/agent/sync-clicks', { method: 'POST' });
+  try {{
+    const res = await fetch('/api/agent/sync-clicks', {{ method: 'POST' }});
     const d = await res.json();
-    if (d.synced_count > 0) {
+    if (d.synced_count > 0) {{
       showToast('🔥 Synced ' + d.synced_count + ' active client clicks! Reloading...');
       setTimeout(() => location.reload(), 800);
-    } else {
+    }} else {{
       showToast('✅ Client engagement verified and up to date.');
       setTimeout(() => location.reload(), 1200);
-    }
-  } catch (e) {
+    }}
+  }} catch (e) {{
     showToast('Sync check finished');
-  }
-}
+  }}
+}}
 </script>
 </head>
 <body>
@@ -3461,15 +3461,15 @@ async function syncClicks() {
 <script>
 refreshActivity();
 setInterval(refreshActivity, 5000);
-setInterval(async () => {
-  try {
-    const r = await fetch('/api/agent/sync-clicks', { method: 'POST' });
+setInterval(async () => {{
+  try {{
+    const r = await fetch('/api/agent/sync-clicks', {{ method: 'POST' }});
     const d = await r.json();
-    if (d && d.synced_count > 0) {
+    if (d && d.synced_count > 0) {{
       location.reload();
-    }
-  } catch (e) {}
-}, 20000);
+    }}
+  }} catch (e) {{}}
+}}, 20000);
 </script>
 </body>
 </html>"""
