@@ -1617,6 +1617,7 @@ def get_demo_page(clinic: Optional[str] = None, agency: Optional[str] = None, br
     if not clinic:
         display_agency = agency or "Apex Prime Real Estate"
         display_broker = broker or "Ahmad Al Zaabi"
+        display_whatsapp = whatsapp or "+971547400174"
         return HTMLResponse(content=build_broker_demo_html(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp), media_type="text/html; charset=utf-8")
 
     # Otherwise dental clinic demo
