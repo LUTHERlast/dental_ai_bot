@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import urllib.parse
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -844,38 +845,20 @@ def chat_endpoint(req: ChatRequest):
 
 # ==================== REAL ESTATE DEMO & DASHBOARD ====================
 
-@app.get("/re/demo", response_class=HTMLResponse)
-@app.get("/realestate", response_class=HTMLResponse)
-@app.get("/portal", response_class=HTMLResponse)
-@app.get("/vip", response_class=HTMLResponse)
-@app.get("/showcase", response_class=HTMLResponse)
-def get_re_demo(agency: Optional[str] = "Apex Prime Real Estate", broker: Optional[str] = "Ahmad Al Zaabi", whatsapp: Optional[str] = "+971547400174", mode: Optional[str] = "demo"):
+# ==================== REAL ESTATE CLIENT PORTAL & BROKER DEMO ====================
+
+def build_client_portal_html(agency: str, broker: str, whatsapp: str) -> str:
     import urllib.parse
     enc_agency = urllib.parse.quote(agency)
     enc_broker = urllib.parse.quote(broker)
     clean_wa = re.sub(r'[^0-9]', '', whatsapp or "971547400174")
-    dashboard_url = f"/leads?agency={enc_agency}&broker={enc_broker}"
 
-    # Determine if this is a clean buyer portal (for Instagram bio / WhatsApp profile) or a broker pitch demo
-    is_client_portal = (mode in ["portal", "client", "vip"])
-    
-    if is_client_portal:
-        page_title = f"{agency} | Exclusive Luxury Residences Abu Dhabi & Dubai"
-        header_cta = f'<a href="https://wa.me/{clean_wa}?text=Hello%20{enc_broker},%20I%20am%20inquiring%20about%20your%20luxury%20residences%20in%20Dubai%20%26%20Abu%20Dhabi" class="dash-link" style="background:#25D366; display:inline-flex; align-items:center; gap:8px;" target="_blank">&#128172; WhatsApp {broker}</a>'
-        hero_badge = '<div class="hero-badge" style="border-color:#eab308; color:#facc15; background:rgba(234,179,8,0.12);">&#11088; PRIVATE CLIENT LUXURY SHOWCASE</div>'
-        hero_hint = '<div class="interactive-hint" style="background:rgba(15,23,42,0.8); border:1px solid #38bdf8; cursor:pointer;" onclick="if(window.openApexChat) window.openApexChat();">&#128172; Tap the blue concierge bubble below to browse matching penthouses, villas &amp; payment plans 24/7</div>'
-    else:
-        page_title = f"{agency} | Luxury Properties Abu Dhabi & Dubai"
-        header_cta = f'<a href="{dashboard_url}" class="dash-link" target="_blank">&#128202; View Broker Lead Pipeline</a>'
-        hero_badge = '<div class="hero-badge">AI PROPERTY ADVISOR PREVIEW</div>'
-        hero_hint = '<div class="interactive-hint">&#128071; Tap the blue chat bubble at the bottom-right to test the AI Lead-Qualifier!</div>'
-
-    demo_html = f"""<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{page_title}</title>
+<title>{agency} | Exclusive Luxury Residences Abu Dhabi & Dubai</title>
 <style>
   * {{ box-sizing: border-box; }}
   body {{
@@ -898,7 +881,225 @@ def get_re_demo(agency: Optional[str] = "Apex Prime Real Estate", broker: Option
   .logo {{
     font-size: 20px;
     font-weight: 800;
-    letter-spacing: 1px;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }}
+  .tagline {{
+    font-size: 11px;
+    color: #38bdf8;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 600;
+  }}
+  .btn-wa {{
+    background: #25D366;
+    color: #ffffff;
+    padding: 9px 20px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 14px rgba(37, 211, 102, 0.3);
+  }}
+  .btn-wa:hover {{ background: #22c35e; }}
+  .hero {{
+    padding: 60px 24px 40px;
+    max-width: 960px;
+    margin: 0 auto;
+    text-align: center;
+  }}
+  .hero-badge {{
+    display: inline-block;
+    background: rgba(234, 179, 8, 0.12);
+    color: #facc15;
+    border: 1px solid #ca8a04;
+    padding: 6px 18px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 800;
+    margin-bottom: 18px;
+    letter-spacing: 1.2px;
+  }}
+  .hero h1 {{
+    font-size: 40px;
+    margin: 0 0 16px;
+    font-weight: 800;
+    line-height: 1.25;
+    background: linear-gradient(135deg, #ffffff, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }}
+  .hero p {{
+    font-size: 16px;
+    color: #94a3b8;
+    max-width: 680px;
+    margin: 0 auto 26px;
+    line-height: 1.6;
+  }}
+  .properties-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    max-width: 1100px;
+    margin: 20px auto 80px;
+    padding: 0 20px;
+  }}
+  .prop-card {{
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 16px;
+    overflow: hidden;
+    transition: transform 0.2s, border-color 0.2s;
+  }}
+  .prop-card:hover {{ transform: translateY(-4px); border-color: #38bdf8; }}
+  .prop-img {{
+    height: 180px;
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+  }}
+  .prop-info {{ padding: 20px; }}
+  .prop-loc {{ font-size: 11px; color: #38bdf8; font-weight: 700; text-transform: uppercase; }}
+  .prop-title {{ font-size: 18px; font-weight: 700; margin: 6px 0; color: #ffffff; }}
+  .prop-price {{ font-size: 16px; font-weight: 800; color: #4ade80; margin-bottom: 8px; }}
+  .prop-desc {{ font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 16px; }}
+  .prop-cta {{
+    display: block;
+    text-align: center;
+    background: #1e293b;
+    color: #38bdf8;
+    border: 1px solid #334155;
+    padding: 10px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+  }}
+  .prop-cta:hover {{ background: #25D366; color: #ffffff; border-color: #25D366; }}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">&#127963; {agency}</div>
+    <div class="tagline">Private Client Real Estate Advisory</div>
+  </div>
+  <a href="https://wa.me/{clean_wa}?text=Hello%20{enc_broker},%20I%20am%20inquiring%20about%20your%20luxury%20residences" class="btn-wa" target="_blank">&#128172; WhatsApp {broker}</a>
+</header>
+
+<div class="hero">
+  <div class="hero-badge">&#11088; PRIVATE CLIENT LUXURY SHOWCASE</div>
+  <h1>Luxury Waterfront &amp; Golf Residences in UAE</h1>
+  <p>Curated portfolio of prime villas, penthouses, and high-yield off-plan developments across Saadiyat Island, Yas Island, and Palm Jumeirah. Eligible for 10-Year UAE Golden Visa.</p>
+</div>
+
+<div class="properties-grid">
+  <div class="prop-card">
+    <div class="prop-img">&#127958;</div>
+    <div class="prop-info">
+      <div class="prop-loc">Saadiyat Island &bull; Abu Dhabi</div>
+      <div class="prop-title">Beachfront Luxury Villas</div>
+      <div class="prop-price">From 4,800,000 AED</div>
+      <div class="prop-desc">Exclusive private enclave by Aldar with private beach access and proximity to the Louvre Abu Dhabi.</div>
+      <a href="https://wa.me/{clean_wa}?text=Hello%20{enc_broker},%20please%20send%20brochure%20for%20Saadiyat%20Beachfront%20Villas" class="prop-cta" target="_blank">&#128172; Inquire on WhatsApp</a>
+    </div>
+  </div>
+
+  <div class="prop-card">
+    <div class="prop-img">&#127961;</div>
+    <div class="prop-info">
+      <div class="prop-loc">Downtown Dubai</div>
+      <div class="prop-title">Opera District Residences</div>
+      <div class="prop-price">From 2,400,000 AED</div>
+      <div class="prop-desc">High-floor luxury suites with direct Burj Khalifa panoramas and high short-term rental yields (8.5%+).</div>
+      <a href="https://wa.me/{clean_wa}?text=Hello%20{enc_broker},%20please%20send%20brochure%20for%20Downtown%20Opera%20District" class="prop-cta" target="_blank">&#128172; Inquire on WhatsApp</a>
+    </div>
+  </div>
+
+  <div class="prop-card">
+    <div class="prop-img">&#9971;</div>
+    <div class="prop-info">
+      <div class="prop-loc">Yas Island &bull; Abu Dhabi</div>
+      <div class="prop-title">Yas Acres Golf Townhouses</div>
+      <div class="prop-price">From 2,100,000 AED</div>
+      <div class="prop-desc">9-hole championship golf course community with international schools and marina waterfront.</div>
+      <a href="https://wa.me/{clean_wa}?text=Hello%20{enc_broker},%20please%20send%20brochure%20for%20Yas%20Acres%20Golf%20Townhouses" class="prop-cta" target="_blank">&#128172; Inquire on WhatsApp</a>
+    </div>
+  </div>
+</div>
+
+<script src="/re-widget.js" data-agency="{agency}" data-broker="{broker}" data-whatsapp="{whatsapp}"></script>
+</body>
+</html>"""
+
+
+def build_broker_demo_html(agency: str, broker: str, whatsapp: str) -> str:
+    import urllib.parse
+    enc_agency = urllib.parse.quote(agency)
+    enc_broker = urllib.parse.quote(broker)
+    clean_wa = re.sub(r'[^0-9]', '', whatsapp or "971547400174")
+    dashboard_url = f"/leads?agency={enc_agency}&broker={enc_broker}"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{agency} | AI Property Advisor Demo</title>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #090d16;
+    color: #f8fafc;
+  }}
+  .broker-eval-bar {{
+    background: linear-gradient(90deg, #0369a1, #0284c7);
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
+    border-bottom: 1px solid #38bdf8;
+    flex-wrap: wrap;
+    gap: 12px;
+  }}
+  .eval-pipe-btn {{
+    background: #0f172a;
+    color: #38bdf8;
+    border: 1px solid #38bdf8;
+    padding: 6px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }}
+  .eval-pipe-btn:hover {{ background: #1e293b; color: #ffffff; }}
+  header {{
+    background: rgba(15, 23, 42, 0.95);
+    padding: 16px 36px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #1e293b;
+  }}
+  .logo {{
+    font-size: 20px;
+    font-weight: 800;
     color: #38bdf8;
   }}
   .tagline {{
@@ -907,18 +1108,9 @@ def get_re_demo(agency: Optional[str] = "Apex Prime Real Estate", broker: Option
     text-transform: uppercase;
     letter-spacing: 1.5px;
   }}
-  .dash-link {{
-    background: #0284c7;
-    color: #ffffff;
-    padding: 8px 18px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 700;
-  }}
   .hero {{
-    padding: 70px 24px 50px;
-    max-width: 1000px;
+    padding: 50px 24px 30px;
+    max-width: 900px;
     margin: 0 auto;
     text-align: center;
   }}
@@ -930,146 +1122,137 @@ def get_re_demo(agency: Optional[str] = "Apex Prime Real Estate", broker: Option
     padding: 6px 16px;
     border-radius: 20px;
     font-size: 12px;
-    font-weight: 700;
-    margin-bottom: 20px;
+    font-weight: 800;
+    margin-bottom: 18px;
     letter-spacing: 1px;
   }}
   .hero h1 {{
-    font-size: 42px;
+    font-size: 38px;
     margin: 0 0 16px;
     font-weight: 800;
-    line-height: 1.2;
+    line-height: 1.25;
     background: linear-gradient(135deg, #ffffff, #94a3b8);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }}
   .hero p {{
-    font-size: 17px;
+    font-size: 16px;
     color: #94a3b8;
-    max-width: 700px;
-    margin: 0 auto 30px;
+    max-width: 720px;
+    margin: 0 auto 24px;
     line-height: 1.6;
   }}
-  .interactive-hint {{
-    background: #1e293b;
-    border: 1px solid #38bdf8;
+  .test-box {{
+    background: #0f172a;
+    border: 2px dashed #0284c7;
+    border-radius: 14px;
+    padding: 22px;
+    max-width: 680px;
+    margin: 0 auto 40px;
+    text-align: left;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }}
+  .test-title {{
+    font-size: 13px;
+    font-weight: 800;
     color: #38bdf8;
-    display: inline-block;
-    padding: 12px 24px;
-    border-radius: 30px;
-    font-weight: 700;
-    font-size: 14px;
-  }}
-  .properties-grid {{
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 24px;
-    max-width: 1100px;
-    margin: 40px auto 80px;
-    padding: 0 20px;
-  }}
-  .prop-card {{
-    background: #131b2e;
-    border: 1px solid #1e293b;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-  }}
-  .prop-img {{
-    height: 180px;
-    background: linear-gradient(135deg, #1e293b, #0f172a);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
     display: flex;
     align-items: center;
-    justify-content: center;
-    font-size: 48px;
+    gap: 8px;
   }}
-  .prop-info {{
-    padding: 20px;
-  }}
-  .prop-tag {{
-    font-size: 11px;
-    color: #38bdf8;
-    font-weight: 700;
-    text-transform: uppercase;
-  }}
-  .prop-title {{
-    font-size: 18px;
-    font-weight: 700;
-    margin: 6px 0;
-  }}
-  .prop-price {{
-    font-size: 16px;
-    font-weight: 800;
-    color: #4ade80;
-    margin-bottom: 8px;
-  }}
-  .prop-desc {{
+  .test-item {{
+    background: #1e293b;
+    border: 1px solid #334155;
+    padding: 10px 14px;
+    border-radius: 8px;
     font-size: 13px;
-    color: #94a3b8;
-    line-height: 1.5;
+    color: #f1f5f9;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
   }}
+  .test-item:hover {{ border-color: #38bdf8; background: #334155; }}
 </style>
 </head>
 <body>
 
+<div class="broker-eval-bar">
+  <div>💼 <strong>BROKER EVALUATION MODE:</strong> Test how your custom AI Advisor qualifies 5M+ AED buyers and handles objections 24/7 on your listings.</div>
+  <a href="{dashboard_url}" class="eval-pipe-btn" target="_blank">&#128202; View Live CRM Pipeline &rarr;</a>
+</div>
+
 <header>
   <div>
     <div class="logo">&#127963; {agency}</div>
-    <div class="tagline">Private Client Real Estate Advisory</div>
+    <div class="tagline">AI Property Advisor Interactive Preview</div>
   </div>
-  {header_cta}
+  <a href="{dashboard_url}" class="eval-pipe-btn" target="_blank">&#128202; View Broker Pipeline</a>
 </header>
 
 <div class="hero">
-  {hero_badge}
-  <h1>Luxury Waterfront & Golf Living in Abu Dhabi & Dubai</h1>
-  <p>Exclusive off-plan and secondary market residences in Saadiyat Island, Yas Island, Palm Jumeirah, and Downtown Dubai. Eligible for 10-Year UAE Golden Visa.</p>
-  {hero_hint}
-</div>
+  <div class="hero-badge">&#129302; 20-SECOND AI LEAD-QUALIFIER TEST</div>
+  <h1>Experience Your Agency's AI Property Advisor</h1>
+  <p>When high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), this AI pre-qualifies their liquid budget, mortgage vs. cash, and 10-Yr Golden Visa timeline, then hands the qualified lead directly to your WhatsApp.</p>
 
-<div class="properties-grid">
-  <div class="prop-card">
-    <div class="prop-img">&#127958;</div>
-    <div class="prop-info">
-      <div class="prop-tag">Saadiyat Island &bull; Abu Dhabi</div>
-      <div class="prop-title">Beachfront Luxury Villas</div>
-      <div class="prop-price">From 4,800,000 AED</div>
-      <div class="prop-desc">Exclusive private enclave by Aldar with private beach access and proximity to the Louvre Abu Dhabi.</div>
-    </div>
-  </div>
-
-  <div class="prop-card">
-    <div class="prop-img">&#127961;</div>
-    <div class="prop-info">
-      <div class="prop-tag">Downtown Dubai</div>
-      <div class="prop-title">Opera District Residences</div>
-      <div class="prop-price">From 2,400,000 AED</div>
-      <div class="prop-desc">High-floor luxury suites with direct Burj Khalifa panoramas and high short-term rental yields (8.5%+).</div>
-    </div>
-  </div>
-
-  <div class="prop-card">
-    <div class="prop-img">&#9971;</div>
-    <div class="prop-info">
-      <div class="prop-tag">Yas Island &bull; Abu Dhabi</div>
-      <div class="prop-title">Yas Acres Golf Townhouses</div>
-      <div class="prop-price">From 2,100,000 AED</div>
-      <div class="prop-desc">9-hole championship golf course community with international schools and marina waterfront.</div>
-    </div>
+  <div class="test-box">
+    <div class="test-title">&#128073; Tap any prompt below to test Aria live:</div>
+    <div class="test-item" onclick="simulatePrompt(this.innerText)">"I have a 6M AED cash budget looking for a luxury beachfront villa in Saadiyat Island"</div>
+    <div class="test-item" onclick="simulatePrompt(this.innerText)">"What are the payment plans and 10-Year Golden Visa requirements for Aldar off-plan?"</div>
+    <div class="test-item" onclick="simulatePrompt(this.innerText)">"Can you send the brochure directly to my WhatsApp?"</div>
   </div>
 </div>
 
-<!-- LIVE EMBEDDABLE REAL ESTATE WIDGET -->
-<script 
-  src="/re-widget.js" 
-  data-agency="{agency}" 
-  data-broker="{broker}"
-  data-whatsapp="{whatsapp}">
+<script src="/re-widget.js" data-agency="{agency}" data-broker="{broker}" data-whatsapp="{whatsapp}"></script>
+
+<script>
+function simulatePrompt(text) {{
+  const win = document.getElementById("re-chat-window");
+  const bubble = document.getElementById("re-chat-bubble");
+  if (win && win.style.display !== "flex" && bubble) {{
+    bubble.click();
+  }}
+  const input = document.getElementById("re-chat-input");
+  if (input) {{
+    input.value = text;
+    input.focus();
+  }}
+}}
+
+// Automatically trigger open after 1.2s for frictionless broker test
+setTimeout(function() {{
+  const win = document.getElementById("re-chat-window");
+  const bubble = document.getElementById("re-chat-bubble");
+  if (win && win.style.display !== "flex" && bubble) {{
+    bubble.click();
+  }}
+}}, 1200);
 </script>
 
 </body>
 </html>"""
-    return HTMLResponse(content=demo_html, media_type="text/html; charset=utf-8")
+
+@app.get("/portal", response_class=HTMLResponse)
+@app.get("/vip", response_class=HTMLResponse)
+@app.get("/showcase", response_class=HTMLResponse)
+def get_client_portal(
+    agency: Optional[str] = "Apex Prime Real Estate",
+    broker: Optional[str] = "Ahmad Al Zaabi",
+    whatsapp: Optional[str] = "+971547400174"
+):
+    return HTMLResponse(content=build_client_portal_html(agency=agency, broker=broker, whatsapp=whatsapp), media_type="text/html; charset=utf-8")
+
+@app.get("/re/demo", response_class=HTMLResponse)
+@app.get("/realestate", response_class=HTMLResponse)
+def get_re_demo_page(
+    agency: Optional[str] = "Apex Prime Real Estate",
+    broker: Optional[str] = "Ahmad Al Zaabi",
+    whatsapp: Optional[str] = "+971547400174"
+):
+    return HTMLResponse(content=build_broker_demo_html(agency=agency, broker=broker, whatsapp=whatsapp), media_type="text/html; charset=utf-8")
+
 
 @app.get("/api/leads")
 def api_leads():
@@ -1434,8 +1617,7 @@ def get_demo_page(clinic: Optional[str] = None, agency: Optional[str] = None, br
     if not clinic:
         display_agency = agency or "Apex Prime Real Estate"
         display_broker = broker or "Ahmad Al Zaabi"
-        display_whatsapp = whatsapp or "+971547400174"
-        return get_re_demo(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp, mode=mode)
+        return HTMLResponse(content=build_broker_demo_html(agency=display_agency, broker=display_broker, whatsapp=display_whatsapp), media_type="text/html; charset=utf-8")
 
     # Otherwise dental clinic demo
     display_clinic = clinic
