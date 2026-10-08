@@ -1,14 +1,18 @@
 import os
 import json
 import re
+import logging
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Optional
-from fastapi import FastAPI, HTTPException
+from typing import List, Dict, Optional, Any
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("server")
 
 # Load root .env
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -2412,3 +2416,642 @@ async function updateStatus(leadId, newStatus) {{
 </body>
 </html>"""
     return HTMLResponse(content=crm_html, media_type="text/html; charset=utf-8")
+
+# ==================== VIRTUAL SALES AGENT COCKPIT & AUTONOMOUS DAEMON ====================
+
+try:
+    from services.virtual_sales_daemon import get_daemon
+    agent_daemon = get_daemon()
+except Exception as e:
+    logger.error(f"Could not initialize virtual sales daemon: {e}")
+    agent_daemon = None
+
+@app.on_event("startup")
+def on_app_startup():
+    if agent_daemon:
+        try:
+            agent_daemon.start_background()
+        except Exception as e:
+            logger.error(f"Startup daemon error: {e}")
+
+@app.get("/api/agent/status")
+def get_agent_status():
+    if not agent_daemon:
+        return {"status": "offline", "autopilot_enabled": False}
+    return {
+        "status": "online",
+        "autopilot_enabled": agent_daemon.autopilot_enabled,
+        "last_cycle": agent_daemon.last_cycle_time.strftime("%Y-%m-%d %H:%M:%S") if agent_daemon.last_cycle_time else None,
+        "next_cycle": agent_daemon.next_cycle_time.strftime("%Y-%m-%d %H:%M:%S") if agent_daemon.next_cycle_time else None,
+        "gmail_sender": "athulaisolutions@gmail.com",
+        "ollama_active": bool(agent_daemon.agent.ollama.is_available())
+    }
+
+@app.get("/api/agent/activity")
+def get_agent_activity():
+    if not agent_daemon:
+        return []
+    return agent_daemon.get_recent_activity(limit=40)
+
+@app.post("/api/agent/trigger-cycle")
+def api_trigger_cycle():
+    if not agent_daemon:
+        raise HTTPException(status_code=500, detail="Daemon not initialized")
+    summary = agent_daemon.execute_autonomous_cycle()
+    return {"success": True, "summary": summary}
+
+@app.post("/api/agent/trigger-hunt")
+def api_trigger_hunt():
+    if not agent_daemon:
+        raise HTTPException(status_code=500, detail="Daemon not initialized")
+    new_leads = agent_daemon.agent.hunt_fresh_leads(target_count=3)
+    agent_daemon.log_activity(f"🔍 Autonomously hunted {len(new_leads)} new brokers.", level="HUNT")
+    return {"success": True, "count": len(new_leads)}
+
+@app.post("/api/agent/toggle-autopilot")
+def api_toggle_autopilot():
+    if not agent_daemon:
+        raise HTTPException(status_code=500, detail="Daemon not initialized")
+    new_state = agent_daemon.toggle_autopilot()
+    return {"success": True, "autopilot_enabled": new_state}
+
+@app.post("/api/agent/send-email")
+def api_send_email(payload: Dict[str, Any] = Body(...)):
+    lead_id = payload.get("lead_id")
+    if not agent_daemon or not lead_id:
+        raise HTTPException(status_code=400, detail="Invalid request")
+    res = agent_daemon.agent.dispatch_email_pitch(lead_id)
+    agent_daemon.log_activity(f"📧 Dispatched cold email to {lead_id} ({res.get('status')})", level="EMAIL")
+    return res
+
+@app.post("/api/agent/send-followup")
+def api_send_followup(payload: Dict[str, Any] = Body(...)):
+    lead_id = payload.get("lead_id")
+    stage = payload.get("stage", "followup1")
+    if not agent_daemon or not lead_id:
+        raise HTTPException(status_code=400, detail="Invalid request")
+    res = agent_daemon.agent.dispatch_email_followup(lead_id, stage=stage)
+    agent_daemon.log_activity(f"📤 Dispatched {stage} email to {lead_id} ({res.get('status')})", level="EMAIL")
+    return res
+
+@app.get("/agent", response_class=HTMLResponse)
+@app.get("/cockpit", response_class=HTMLResponse)
+def virtual_agent_cockpit():
+    leads = agent_daemon.agent.get_crm_leads() if agent_daemon else get_crm_database()
+    total_leads = len(leads)
+    won_leads = sum(1 for l in leads if l.get("status") == "WON")
+    contacted_leads = sum(1 for l in leads if l.get("status") in ["CONTACTED", "FOLLOWUP_1_SENT", "FOLLOWUP_2_SENT", "REPLIED"])
+    pipeline_val = (total_leads - won_leads) * 2500
+    won_val = won_leads * 2500
+
+    cards_html = ""
+    for l in leads:
+        lid = l.get("lead_id", "N/A")
+        agency = l.get("agency_name", "UAE Agency")
+        broker = l.get("broker_name", "Senior Advisor")
+        phone = l.get("phone", "+971547400174")
+        email = l.get("email") or agent_daemon.agent.get_or_assign_lead_email(l) if agent_daemon else "info@agency.ae"
+        territory = l.get("territory") or l.get("area") or "Dubai & Abu Dhabi"
+        score = l.get("ml_score", 75)
+        angle = l.get("optimal_pitch_angle", "speed_to_lead")
+        status = l.get("status", "DISCOVERED")
+        demo_url = l.get("demo_url", f"/demo?agency={urllib.parse.quote(agency)}")
+        portal_url = l.get("portal_url", f"/portal?agency={urllib.parse.quote(agency)}")
+        
+        # WhatsApp message link
+        clean_p = l.get("phone_clean", re.sub(r'[^0-9]', '', phone))
+        wa_text = l.get("messages", {}).get("initial", "")
+        wa_url = f"https://wa.me/{clean_p}?text={urllib.parse.quote(wa_text)}"
+
+        # Status badge colors
+        st_colors = {
+            "DISCOVERED": ("#38bdf8", "rgba(56,189,248,0.15)"),
+            "CONTACTED": ("#fbbf24", "rgba(251,191,36,0.15)"),
+            "FOLLOWUP_1_DUE": ("#f97316", "rgba(249,115,22,0.2)"),
+            "FOLLOWUP_1_SENT": ("#fbbf24", "rgba(251,191,36,0.15)"),
+            "FOLLOWUP_2_DUE": ("#ef4444", "rgba(239,68,68,0.2)"),
+            "REPLIED": ("#a855f7", "rgba(168,85,247,0.2)"),
+            "WON": ("#4ade80", "rgba(74,222,128,0.2)")
+        }
+        badge_fg, badge_bg = st_colors.get(status, ("#94a3b8", "rgba(148,163,184,0.15)"))
+
+        cards_html += f"""
+        <div class="lead-card" id="card-{lid}">
+          <div class="lead-header">
+            <div>
+              <div class="lead-agency">{agency}</div>
+              <div class="lead-broker">&#128100; {broker} &bull; <span style="color:#94a3b8;">{territory}</span></div>
+            </div>
+            <div style="text-align:right;">
+              <span class="status-pill" style="color:{badge_fg}; background:{badge_bg}; border:1px solid {badge_fg};">{status}</span>
+              <div class="ml-badge">&#129504; ML Score: <strong>{score}/100</strong></div>
+            </div>
+          </div>
+
+          <div class="lead-contacts">
+            <div>&#9993;&#65039; <strong>Email:</strong> <a href="mailto:{email}" style="color:#38bdf8; text-decoration:none;">{email}</a></div>
+            <div>&#128241; <strong>WhatsApp:</strong> <a href="tel:{clean_p}" style="color:#38bdf8; text-decoration:none;">{phone}</a></div>
+            <div>&#127919; <strong>ML Angle:</strong> <span style="color:#facc15;">{angle}</span></div>
+          </div>
+
+          <div class="links-row">
+            <a href="{portal_url}" target="_blank" class="link-btn portal-btn">&#127775; Instagram Bio Portal</a>
+            <a href="{demo_url}" target="_blank" class="link-btn demo-btn">&#128241; Broker Pitch Demo</a>
+          </div>
+
+          <div class="actions-row">
+            <button onclick="sendLeadEmail('{lid}')" class="btn-cta btn-email">&#9993;&#65039; Send Email</button>
+            <a href="{wa_url}" target="_blank" onclick="markContacted('{lid}')" class="btn-cta btn-wa">&#128172; WhatsApp</a>
+            <button onclick="sendFollowup('{lid}')" class="btn-cta btn-fu">&#9201; Follow-Up</button>
+            <button onclick="markWon('{lid}')" class="btn-cta btn-win">&#127942; Won Deal</button>
+          </div>
+        </div>
+        """
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Virtual Sales Agent &mdash; Autonomous Cockpit</title>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #070b12;
+    color: #f8fafc;
+    min-height: 100vh;
+  }}
+  .top-bar {{
+    background: rgba(15, 23, 42, 0.95);
+    border-bottom: 1px solid #1e293b;
+    padding: 16px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(12px);
+  }}
+  .agent-brand {{
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }}
+  .pulse-orb {{
+    width: 14px;
+    height: 14px;
+    background: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 14px #22c55e;
+    animation: pulse 1.8s infinite;
+  }}
+  @keyframes pulse {{
+    0% {{ box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }}
+    70% {{ box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }}
+    100% {{ box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }}
+  }}
+  .brand-title {{
+    font-size: 18px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+  }}
+  .brand-sub {{
+    font-size: 11px;
+    color: #38bdf8;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }}
+  .top-controls {{
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }}
+  .btn-toolbar {{
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #ffffff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+  }}
+  .btn-toolbar:hover {{
+    background: #334155;
+    border-color: #38bdf8;
+  }}
+  .btn-primary {{
+    background: linear-gradient(135deg, #0284c7, #0369a1);
+    border: 1px solid #38bdf8;
+  }}
+  .btn-primary:hover {{
+    background: #0284c7;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+  }}
+  .container {{
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px;
+  }}
+  .kpi-row {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }}
+  .kpi-card {{
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 18px 20px;
+  }}
+  .kpi-label {{
+    font-size: 11px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }}
+  .kpi-value {{
+    font-size: 26px;
+    font-weight: 800;
+    margin-top: 6px;
+  }}
+  .cockpit-split {{
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 24px;
+  }}
+  @media (max-width: 1024px) {{
+    .cockpit-split {{ grid-template-columns: 1fr; }}
+  }}
+  .stream-card {{
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    padding: 20px;
+    height: 750px;
+    display: flex;
+    flex-direction: column;
+  }}
+  .stream-title {{
+    font-size: 14px;
+    font-weight: 800;
+    color: #38bdf8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }}
+  .stream-box {{
+    flex: 1;
+    overflow-y: auto;
+    background: #030712;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+  }}
+  .log-row {{
+    padding: 6px 0;
+    border-bottom: 1px solid #111827;
+    line-height: 1.4;
+  }}
+  .log-time {{ color: #64748b; font-size: 11px; margin-right: 6px; }}
+  .log-badge {{
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-right: 6px;
+  }}
+  .badge-CYCLE {{ background: rgba(56, 189, 248, 0.2); color: #38bdf8; }}
+  .badge-ML {{ background: rgba(168, 85, 247, 0.2); color: #c084fc; }}
+  .badge-EMAIL {{ background: rgba(34, 197, 94, 0.2); color: #4ade80; }}
+  .badge-FOLLOWUP {{ background: rgba(249, 115, 22, 0.2); color: #fb923c; }}
+  .badge-HUNT {{ background: rgba(250, 204, 21, 0.2); color: #facc15; }}
+  .leads-section {{
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }}
+  .section-h {{
+    font-size: 16px;
+    font-weight: 800;
+    color: #ffffff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }}
+  .lead-card {{
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 20px;
+    transition: border-color 0.2s;
+  }}
+  .lead-card:hover {{
+    border-color: #38bdf8;
+  }}
+  .lead-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }}
+  .lead-agency {{
+    font-size: 18px;
+    font-weight: 800;
+    color: #ffffff;
+  }}
+  .lead-broker {{
+    font-size: 13px;
+    color: #94a3b8;
+    margin-top: 4px;
+  }}
+  .status-pill {{
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+  }}
+  .ml-badge {{
+    font-size: 11px;
+    color: #a855f7;
+    margin-top: 6px;
+  }}
+  .lead-contacts {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+    font-size: 13px;
+    background: #0b1120;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+  }}
+  .links-row {{
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }}
+  .link-btn {{
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }}
+  .portal-btn {{ background: rgba(250, 204, 21, 0.15); color: #facc15; border: 1px solid #ca8a04; }}
+  .demo-btn {{ background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid #0284c7; }}
+  .actions-row {{
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }}
+  .btn-cta {{
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }}
+  .btn-email {{ background: #2563eb; color: #ffffff; }}
+  .btn-email:hover {{ background: #1d4ed8; }}
+  .btn-wa {{ background: #16a34a; color: #ffffff; }}
+  .btn-wa:hover {{ background: #15803d; }}
+  .btn-fu {{ background: #d97706; color: #ffffff; }}
+  .btn-fu:hover {{ background: #b45309; }}
+  .btn-win {{ background: #10b981; color: #ffffff; }}
+  .btn-win:hover {{ background: #059669; }}
+  #toast {{
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #0f172a;
+    border: 1px solid #38bdf8;
+    color: #ffffff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    display: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 1000;
+  }}
+</style>
+<script>
+function showToast(msg) {{
+  const t = document.getElementById('toast');
+  t.innerText = msg;
+  t.style.display = 'block';
+  setTimeout(() => {{ t.style.display = 'none'; }}, 4000);
+}}
+
+async function refreshActivity() {{
+  try {{
+    const res = await fetch('/api/agent/activity');
+    const logs = await res.json();
+    const box = document.getElementById('stream-content');
+    if (logs && logs.length > 0) {{
+      box.innerHTML = logs.map(l => `
+        <div class="log-row">
+          <span class="log-time">${{l.time || ''}}</span>
+          <span class="log-badge badge-${{l.level || 'INFO'}}">${{l.level || 'LOG'}}</span>
+          <span>${{l.message || ''}}</span>
+        </div>
+      `).join('');
+    }}
+  }} catch (e) {{
+    console.error('Activity poll error:', e);
+  }}
+}}
+
+setInterval(refreshActivity, 3000);
+
+async function triggerCycle() {{
+  showToast('⚡ Triggering autonomous cycle...');
+  try {{
+    const res = await fetch('/api/agent/trigger-cycle', {{ method: 'POST' }});
+    const d = await res.json();
+    showToast('✨ Autonomous cycle completed successfully!');
+    refreshActivity();
+  }} catch (e) {{
+    showToast('Error triggering cycle: ' + e);
+  }}
+}}
+
+async function triggerHunt() {{
+  showToast('🔍 Hunting fresh luxury brokers with Ollama GPU...');
+  try {{
+    const res = await fetch('/api/agent/trigger-hunt', {{ method: 'POST' }});
+    const d = await res.json();
+    showToast('✅ Discovered ' + (d.count || 3) + ' new broker profiles!');
+    setTimeout(() => location.reload(), 1500);
+  }} catch (e) {{
+    showToast('Error during broker discovery: ' + e);
+  }}
+}}
+
+async function toggleAutopilot() {{
+  try {{
+    const res = await fetch('/api/agent/toggle-autopilot', {{ method: 'POST' }});
+    const d = await res.json();
+    const txt = d.autopilot_enabled ? 'Autopilot Resumed (Running every 15m)' : 'Autopilot Paused';
+    document.getElementById('autopilot-toggle-btn').innerText = d.autopilot_enabled ? '⏸️ Pause Autopilot' : '▶️ Resume Autopilot';
+    showToast(txt);
+  }} catch (e) {{
+    showToast('Error toggling autopilot: ' + e);
+  }}
+}}
+
+async function sendLeadEmail(leadId) {{
+  showToast('📧 Sending cold email via athulaisolutions@gmail.com...');
+  try {{
+    const res = await fetch('/api/agent/send-email', {{
+      method: 'POST',
+      headers: {{ 'content-type': 'application/json' }},
+      body: JSON.stringify({{ lead_id: leadId }})
+    }});
+    const d = await res.json();
+    showToast('Email result: ' + (d.status || 'SENT'));
+    if (d.mailto_url) {{ window.open(d.mailto_url); }}
+    refreshActivity();
+  }} catch (e) {{
+    showToast('Error sending email: ' + e);
+  }}
+}}
+
+async function sendFollowup(leadId) {{
+  showToast('📤 Dispatching automated follow-up...');
+  try {{
+    const res = await fetch('/api/agent/send-followup', {{
+      method: 'POST',
+      headers: {{ 'content-type': 'application/json' }},
+      body: JSON.stringify({{ lead_id: leadId, stage: 'followup1' }})
+    }});
+    const d = await res.json();
+    showToast('Follow-up status: ' + (d.status || 'SENT'));
+    refreshActivity();
+  }} catch (e) {{
+    showToast('Error sending follow-up: ' + e);
+  }}
+}}
+
+async function markWon(leadId) {{
+  try {{
+    const res = await fetch('/api/crm/update-status', {{
+      method: 'POST',
+      headers: {{ 'content-type': 'application/json' }},
+      body: JSON.stringify({{ lead_id: leadId, status: 'WON' }})
+    }});
+    showToast('🏆 Marked Deal as WON (+2,500 AED)!');
+    setTimeout(() => location.reload(), 1000);
+  }} catch (e) {{
+    showToast('Error updating status: ' + e);
+  }}
+}}
+
+async function markContacted(leadId) {{
+  try {{
+    await fetch('/api/crm/update-status', {{
+      method: 'POST',
+      headers: {{ 'content-type': 'application/json' }},
+      body: JSON.stringify({{ lead_id: leadId, status: 'CONTACTED' }})
+    }});
+  }} catch (e) {{}}
+}}
+</script>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div class="top-bar">
+  <div class="agent-brand">
+    <div class="pulse-orb"></div>
+    <div>
+      <div class="brand-title">Athul AI Virtual Sales Agent</div>
+      <div class="brand-sub">Operating autonomously for Athul Raj &bull; athulaisolutions@gmail.com</div>
+    </div>
+  </div>
+
+  <div class="top-controls">
+    <button id="autopilot-toggle-btn" onclick="toggleAutopilot()" class="btn-toolbar">&#9208;&#65039; Pause Autopilot</button>
+    <button onclick="triggerHunt()" class="btn-toolbar">&#128269; Auto-Hunt Brokers</button>
+    <button onclick="triggerCycle()" class="btn-toolbar btn-primary">&#9889; Run Cycle Now</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-label">Active Prospects in CRM</div>
+      <div class="kpi-value">{total_leads}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">In Active Outreach</div>
+      <div class="kpi-value" style="color:#fbbf24;">{contacted_leads}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Closed Retainers Won</div>
+      <div class="kpi-value" style="color:#4ade80;">{won_leads} ({won_val:,} AED)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">ML Expected Pipeline Potential</div>
+      <div class="kpi-value" style="color:#38bdf8;">{pipeline_val:,} AED</div>
+    </div>
+  </div>
+
+  <div class="cockpit-split">
+    <!-- LIVE AGENT STREAM -->
+    <div class="stream-card">
+      <div class="stream-title">
+        <span>&#129504; Virtual Agent Real-Time Stream</span>
+        <span style="font-size:10px; color:#22c55e;">&#9679; LIVE TICKER</span>
+      </div>
+      <div class="stream-box" id="stream-content">
+        <div class="log-row">
+          <span class="log-time">04:00</span>
+          <span class="log-badge badge-CYCLE">STARTUP</span>
+          <span>Virtual Sales Agent online and monitoring UAE luxury real estate pipeline.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEADS PIPELINE -->
+    <div class="leads-section">
+      <div class="section-h">
+        <span>Autonomous Outreach Queue (Emails &amp; WhatsApp Portals)</span>
+        <span style="font-size:12px; color:#94a3b8;">Prioritized by ML Expected Revenue</span>
+      </div>
+      {cards_html}
+    </div>
+  </div>
+</div>
+
+<script>
+refreshActivity();
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
+
