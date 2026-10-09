@@ -2916,11 +2916,18 @@ def virtual_agent_cockpit():
             "FOLLOWUP_1_SENT": ("#fbbf24", "rgba(251,191,36,0.15)"),
             "FOLLOWUP_2_DUE": ("#ef4444", "rgba(239,68,68,0.2)"),
             "REPLIED": ("#a855f7", "rgba(168,85,247,0.2)"),
-            "WON": ("#4ade80", "rgba(74,222,128,0.2)")
+            "WON": ("#4ade80", "rgba(74,222,128,0.2)"),
+            "BOUNCED": ("#f43f5e", "rgba(244,63,94,0.2)")
         }
         badge_fg, badge_bg = st_colors.get(status, ("#94a3b8", "rgba(148,163,184,0.15)"))
-        status_label = f"🔥 CLICKED ({l.get('click_count', 1)}x)" if status == "CLICKED" else status
+        if status == "CLICKED":
+            status_label = f"🔥 CLICKED ({l.get('click_count', 1)}x)"
+        elif status == "BOUNCED":
+            status_label = "🚫 BOUNCED"
+        else:
+            status_label = status
         click_time_html = f'<div style="font-size:11px; color:#c084fc; margin-top:4px; font-weight:700;">🕒 Clicked: {l.get("last_clicked_at")}</div>' if status == "CLICKED" and l.get("last_clicked_at") else ''
+        bounce_html = f'<div style="font-size:10px; color:#f43f5e; margin-top:4px; max-width:260px; line-height:1.2;">⚠️ {l.get("bounce_reason")}</div>' if status == "BOUNCED" and l.get("bounce_reason") else ''
 
         cards_html += f"""
         <div class="lead-card" id="card-{lid}" style="{'border-color:#a855f7; box-shadow:0 0 15px rgba(168,85,247,0.15);' if status == 'CLICKED' else ''}">
@@ -2933,6 +2940,7 @@ def virtual_agent_cockpit():
               <span class="status-pill" style="color:{badge_fg}; background:{badge_bg}; border:1px solid {badge_fg};">{status_label}</span>
               <div class="ml-badge">&#129504; ML Score: <strong>{score}/100</strong></div>
               {click_time_html}
+              {bounce_html}
             </div>
           </div>
 

@@ -70,10 +70,10 @@
         "niche":  "Prime Golf Course Mansions \u0026 Private Estates",
         "demo_url":  "https://apex-properties-ai.onrender.com/demo?agency=Valco%20Properties\u0026broker=Parisa%20Davarkia\u0026whatsapp=%2B971%2050%20924%202001",
         "dash_url":  "https://apex-properties-ai.onrender.com/leads?agency=Valco%20Properties\u0026broker=Parisa%20Davarkia",
-        "status":  "CONTACTED",
+        "status":  "BOUNCED",
         "discovered_at":  "2026-10-05 21:30:00",
         "last_contacted_at":  "2026-10-08 05:45:08",
-        "next_followup_at":  "2026-10-09 05:45:08",
+        "next_followup_at":  null,
         "messages":  {
                          "initial":  "Hello Parisa,\n\nI noticed your luxury listings in Emirates Hills \u0026 Dubai Hills Estate on Bayut and Property Finder.\n\nWhen high-net-worth buyers inquire after 7 PM or from overseas (London, Europe, India), competing brokers often lock in viewings before morning follow-ups happen.\n\nTo help Valco Properties eliminate this drop-off and filter out tire-kickers, I built a personalized AI Property Advisor tailored for your agency:\n\nðŸ“± Test the live buyer experience on your phone (takes 20 seconds):\nðŸ‘‰ https://apex-properties-ai.onrender.com/demo?agency=Valco%20Properties\u0026broker=Parisa%20Davarkia\u0026whatsapp=%2B971%2050%20924%202001\n(Tap the glowing blue chat bubble at the bottom right)\n\nðŸ“Š View your live qualified investor pipeline:\nðŸ‘‰ https://apex-properties-ai.onrender.com/leads?agency=Valco%20Properties\u0026broker=Parisa%20Davarkia\n\nWhat it does for Valco Properties:\nâ€¢ Instant 24/7 qualification for 5M+ AED cash buyers \u0026 10-Yr Golden Visa investors\nâ€¢ Filters out time-wasters so your team only spends time with serious buyers\nâ€¢ 1-click WhatsApp brochure handoff directly to your mobile\n\nWould you like to test a 7-day free trial on your active listings this week? Zero upfront payment required.\n\nBest regards,\nAthul Raj\nAI Automation Specialist â€” UAE\nWhatsApp: +971 54 740 0174",
                          "followup1":  "Hello Parisa,\n\nQuick follow-up regarding the custom AI Advisor for Valco Properties.\n\nDid you get 20 seconds to test the demo on your phone?\nðŸ‘‰ https://apex-properties-ai.onrender.com/demo?agency=Valco%20Properties\u0026broker=Parisa%20Davarkia\u0026whatsapp=%2B971%2050%20924%202001\n\nA broker in Abu Dhabi tested it yesterday and had an investor qualified for a 6.2M AED beachfront villa inquiry at 11:30 PM with zero manual effort.\n\nWould you like us to activate the 7-Day Free Trial for your team this week?",
@@ -86,8 +86,11 @@
         "tier_badge":  "High-Intent Prospect",
         "portal_url":  "https://apex-properties-ai.onrender.com/portal?agency=Valco%20Properties\u0026broker=Parisa%20Davarkia\u0026whatsapp=%2B971%2050%20924%202001",
         "email":  "parisa@valco.ae",
-        "email_status":  "SENT",
-        "email_sent_at":  "2026-10-08 05:45:08"
+        "email_sent_at":  "2026-10-08 05:45:08",
+        "bounce_type":  "HARD_BOUNCE",
+        "bounce_reason":  "550 5.4.1 Recipient address rejected: Access denied (Microsoft 365 DBEB)",
+        "email_status":  "BOUNCED",
+        "suppressed":  true
     },
     {
         "lead_id":  "UAE-REAL-05",
